@@ -161,7 +161,7 @@
       three words, trained on 1,227 admission notes from 1,173 acute-stroke patients and
       validated with patient-grouped 5-fold cross-validation (ROC-AUC 0.80 / 0.75 / 0.86). Templated NIHSS
       scoring grids were stripped from the notes first, so the model reads narrative only.
-      A length-only baseline sits near chance at 0.58 / 0.53 / 0.46.
+      A length-only baseline sits near chance at 0.55 / 0.52 / 0.54.
     </p>
   </div>
 </div>
@@ -397,7 +397,7 @@ function renderCompare(text) {
     html += `<h2 style="margin-top:20px">Length-only baseline</h2>
       <div class="box">${L.map((r,i)=>miniRow(r.name, r.p, "#a8a29a")).join("")}
       <div class="hintline">word count as the only feature &mdash; ROC-AUC
-        0.58 / 0.53 / 0.46, near chance. The real model is reading content,
+        0.55 / 0.52 / 0.54, near chance. The real model is reading content,
         not verbosity.</div></div>`;
   }
   $("#cmp").innerHTML = html;
