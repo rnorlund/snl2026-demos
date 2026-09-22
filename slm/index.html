@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SLM main — leave-one-out predicted vs actual lesion</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; padding: 0; background: #1a1a1a; color: #ddd; overflow: hidden; }
+  #container { display: flex; height: 100vh; }
+  #sidebar { width: 460px; padding: 18px 22px; overflow-y: auto;
+             background: #232323; box-sizing: border-box;
+             border-right: 1px solid #333; }
+  #viewers { flex: 1; display: flex; flex-direction: column; background: #000; min-width: 0; }
+  #viewer-header { flex: 0 0 auto; min-height: 36px;
+                   padding: 8px 12px; background: #161616;
+                   border-bottom: 1px solid #333; display: flex;
+                   gap: 14px; align-items: center; flex-wrap: wrap;
+                   font-size: 11px; }
+  #viewer-row { flex: 1; display: flex; min-height: 0; }
+  .panel { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+           border-right: 1px solid #333; }
+  .panel:last-child { border-right: none; }
+  .panel-title { flex: 0 0 auto; padding: 6px 10px; font-size: 12px; font-weight: 600;
+                 text-align: center; background: #1f1f1f; color: #ddd;
+                 border-bottom: 1px solid #333; }
+  .panel-title.predicted { color: #fa0; }
+  .panel-title.actual { color: #6cf; }
+  .gl-container { flex: 1; position: relative; min-height: 0; }
+  canvas { width: 100%; height: 100%; display: block; }
+
+  h1 { font-size: 18px; margin: 0 0 4px; color: #fff; }
+  h2 { font-size: 13px; margin: 16px 0 6px; color: #6cf; letter-spacing: .5px;
+       text-transform: uppercase; white-space: nowrap; }
+  p.note { font-size: 12px; line-height: 1.45; color: #aaa; margin: 6px 0 14px; }
+
+  .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  .control-row label { width: 110px; font-size: 12px; color: #ccc; }
+  .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
+                        border: 1px solid #444; border-radius: 3px; font-size: 12px; }
+  .control-row input[type=range] { flex: 1; accent-color: #fa0; }
+  .control-row .val { width: 40px; text-align: right; font-size: 12px;
+                      font-family: monospace; color: #aaa; }
+
+  .slider-row { display: flex; align-items: center; margin: 4px 0; gap: 8px; }
+  .slider-row label { flex: 1.1; font-size: 12px; color: #ccc; }
+  .slider-row input[type=range] { flex: 1.6; }
+  .wab_subs .slider-row input[type=range] { accent-color: #f08; }
+  .wab_errs .slider-row input[type=range] { accent-color: #c8c; }
+  .pnt_errs .slider-row input[type=range] { accent-color: #6cf; }
+  .demo .slider-row input[type=range] { accent-color: #fa0; }
+  .slider-row .val { width: 56px; text-align: right; font-size: 12px;
+                     font-family: ui-monospace, monospace; color: #ddd;
+                     background: #1a1a1a; border: 1px solid #333;
+                     border-radius: 3px; padding: 2px 4px; }
+  .slider-row .val:focus { outline: 1px solid #6cf; color: #fff; }
+
+  .pnt_items .slider-row input[type=range] { accent-color: #6cf; }
+  .nihss .slider-row input[type=range] { accent-color: #9d9; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px;
+           font-size: 10px; font-weight: 600; }
+  .badge.wab_subs  { background: #f08; color: white; }
+  .badge.wab_errs  { background: #c8c; color: #111; }
+  .badge.pnt_items { background: #6cf; color: #111; }
+  .badge.nihss     { background: #9d9; color: #111; }
+  .badge.demo      { background: #fa0; color: #111; }
+  .group-header { display: flex; justify-content: space-between; align-items: baseline; }
+
+  .reset { margin-top: 12px; padding: 8px 14px; background: #6cf; color: #111;
+           border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+  .reset:hover { background: #8df; }
+  .reset.alt { background: #fa0; margin-left: 8px; }
+  .reset.alt:hover { background: #fc6; }
+
+  #status { font-size: 11px; color: #888; margin-top: 12px; padding: 8px;
+            background: #1a1a1a; border-radius: 4px; font-family: monospace; line-height: 1.45;
+            white-space: pre-wrap; }
+  #mode-banner { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; color: #fa0;
+                 font-weight: 600; border: 1px solid #fa0;
+                 border-radius: 4px; background: #1f1f1f; }
+  #legend { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+  #legend .bar { height: 10px; width: 140px;
+                 background: linear-gradient(to right, #000, #800, #f40, #fa0, #ffe);
+                 border: 1px solid #555; }
+  #legend .ticks { display: flex; justify-content: space-between;
+                   width: 140px; font-family: monospace; font-size: 9px; color: #aaa; }
+  .modified { color: #fa0 !important; }
+  /* public build: patient picker removed */
+  #patient, label[for=patient], #patient-row { display: none !important; }
+  #patient-label, .patient-row { display: none !important; }
+  /* public build: no patient data, so no comparison panel */
+  #viewer-row .panel:nth-child(2) { display: none !important; }
+  #viewer-row .panel:first-child { flex: 1 1 100% !important; }
+</style>
+</head>
+<body>
+<div style="background:#1d3557;color:#fff;padding:8px 14px;font-size:13px">Public demo. Model coefficients only: no patient records are included or transmitted.</div>
+<div id="container">
+  <div id="sidebar">
+    <h1>SLM main: predicted vs actual lesion <span style="color:#fa0;font-size:12px">LOO</span></h1>
+    <p class="note">
+      The model behind the SLM poster: <strong>Multi-task ElasticNet</strong> fitted over 296 patients x 199 behavioral and demographic features to 64 left-hemisphere JHU regions, evaluated leave-one-out (max R&sup2; = 0.47, 40 of 64 regions above 0.1). Move the sliders to build a behavioral profile and the map shows the lesion pattern the model predicts for it. <strong>No patient records are included in this build</strong>; unset features sit at the cohort mean.</p>
+
+    <h2>Patient & display</h2>
+    <div class="control-row patient-row">
+      <label>Patient</label>
+      <select id="patient">
+        <option value="__custom__">— Custom profile —</option>
+      </select>
+    </div>
+    <div class="control-row">
+      <label>Colormap</label>
+      <select id="colormap"></select>
+    </div>
+    <div class="control-row">
+      <label>Saturation γ</label>
+      <input type="range" id="amp" min="0.20" max="6.0" step="0.05" value="0.55">
+      <span class="val" id="amp-val">0.55</span>
+    </div>
+
+    <div class="group-header"><h2>WAB scores</h2><span class="badge wab_subs">WAB</span></div>
+    <div id="wab_subs-group" class="wab_subs"></div>
+
+    <div class="group-header"><h2>WAB error proportions</h2><span class="badge wab_errs">WAB errs</span></div>
+    <div id="wab_errs-group" class="wab_errs"></div>
+
+    <div class="group-header"><h2>PNT items</h2><span class="badge pnt_items">PNT</span></div>
+    <div id="pnt_items-group" class="pnt_items"></div>
+
+    <div class="group-header"><h2>NIHSS</h2><span class="badge nihss">NIHSS</span></div>
+    <div id="nihss-group" class="nihss"></div>
+
+    <div class="group-header"><h2>Demographics</h2><span class="badge demo">DEMO</span></div>
+    <div id="demo-group" class="demo"></div>
+
+    <button class="reset" id="reset-btn">Reset to patient's scores</button>
+    <button class="reset alt" id="median-btn">Reset to cohort median</button>
+
+    <div id="status">Loading model and atlas…</div>
+  </div>
+
+  <div id="viewers">
+    <div id="viewer-header">
+      <div id="mode-banner">Mode: …</div>
+      <div id="legend">
+        <span style="font-size:11px;color:#aaa">Lesion proportion:</span>
+        <div>
+          <div class="bar" id="legend-bar"></div>
+          <div class="ticks"><span id="legend-min">0%</span><span id="legend-max">100%</span></div>
+        </div>
+      </div>
+      <div style="margin-left:auto;font-size:11px;color:#888" id="r2-readout"></div>
+    </div>
+    <div id="viewer-row">
+      <div class="panel">
+        <div class="panel-title predicted">Predicted lesion for this profile</div>
+        <div class="gl-container"><div id="bw-pred" style="width:100%;height:100%"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title actual">Actual lesion</div>
+        <div class="gl-container"><div id="bw-actual" style="width:100%;height:100%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="bw.js"></script>
+<script>
+let model = null;
+let nvPred = null, nvActual = null;
+let currentPatient = '__custom__';
+let isModified = false;
+const slidersByFeature = {};
+const valBoxByFeature = {};
+let participantById = {};   // public build: always empty
+
+const COLORMAP_GRADIENTS = {
+  warm:    'linear-gradient(to right, #000, #800, #f40, #fa0, #ffe)',
+  hot:     'linear-gradient(to right, #000, #c00, #f80, #ff0, #fff)',
+  plasma:  'linear-gradient(to right, #0d0887, #7e03a8, #cc4778, #f89441, #f0f921)',
+  viridis: 'linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725)',
+  inferno: 'linear-gradient(to right, #000004, #420a68, #932667, #dd513a, #fcffa4)',
+  turbo:   'linear-gradient(to right, #30123b, #466be3, #28bbeb, #a4fc3c, #fbb938, #d3151a, #7a0403)',
+  jet:     'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000, #800000)',
+  actc:    'linear-gradient(to right, #000, #f00, #ff0, #fff)',
+};
+
+async function init() {
+  setStatus('Loading model.json…');
+  const resp = await fetch('model.json');
+  model = await resp.json();
+  // public build: no per-patient records are shipped
+  buildSliders();
+  hookControls();
+
+  setStatus('Loading brainWhiz…');
+  // brainWhiz draws the three planes plus the 3D render itself and carries its
+  // own JHU atlas, so we hand it per-region numbers and nothing else.
+  nvPred = BW.mount(document.getElementById('bw-pred'),
+                    { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  BW.cmapPicker(document.getElementById('colormap'), nvPred, 'warm');
+  // the comparison panel is hidden in the public build; only mount it if shown
+  const actualPanel = document.getElementById('bw-actual');
+  if (actualPanel.offsetParent !== null) {
+    nvActual = BW.mount(actualPanel, { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  }
+  await nvPred.ready;
+
+  const s = model.loo_summary;
+  const e = s.enet;
+  setStatus(
+    `SLM main pipeline (Multi-task ElasticNet)\n` +
+    `N=${s.n_participants} patients × ${s.n_features} features → ${s.n_rois} LH ROIs\n` +
+    `Hyperparameters: α=${s.best_alpha.toExponential(2)}, l1=${s.best_l1_ratio.toFixed(2)} (CV-picked on full data)\n` +
+    `LOO R²:  max ${e.max_r2.toFixed(2)}   mean ${e.mean_r2.toFixed(2)}   #ROI>0.1 ${e.n_above_0_1}/${s.n_rois}`
+  );
+  setPatient('__custom__');
+}
+
+function setStatus(s) { document.getElementById('status').textContent = s; }
+function setBanner(s) { document.getElementById('mode-banner').textContent = 'Mode: ' + s; }
+
+function buildPatientDropdown() { /* public build: removed */ }
+
+function buildSliders() {
+  for (const info of model.slider_info) {
+    const group = document.getElementById(info.group + '-group');
+    const row = document.createElement('div');
+    row.className = 'slider-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = info.pretty;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = info.min; slider.max = info.max;
+    slider.step = Math.max(0.01, (info.max - info.min) / 200);
+    slider.value = info.p50;
+    const val = document.createElement('input');
+    val.type = 'number'; val.className = 'val';
+    val.min = info.min; val.max = info.max; val.step = slider.step;
+    val.value = formatVal(info.p50, info.units);
+    val.addEventListener('input', () => {
+      const v = parseFloat(val.value);
+      if (!isNaN(v)) { slider.value = v; slider.dispatchEvent(new Event('input')); }
+    });
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      if (document.activeElement !== val) val.value = formatVal(v, info.units);
+      onSliderEdit();
+    });
+    slidersByFeature[info.name] = slider;
+    valBoxByFeature[info.name] = val;
+    row.appendChild(lbl); row.appendChild(slider); row.appendChild(val);
+    group.appendChild(row);
+  }
+}
+
+function formatVal(v, units) {
+  if (units === '/10') return v.toFixed(1);
+  if (units === 'prop') return v.toFixed(2);
+  return v.toFixed(0);
+}
+
+function hookControls() {
+  document.getElementById('patient').addEventListener('change', (e) => setPatient(e.target.value));
+  document.getElementById('colormap').addEventListener('change', () => updateAll());
+  const amp = document.getElementById('amp');
+  amp.addEventListener('input', () => {
+    document.getElementById('amp-val').textContent = parseFloat(amp.value).toFixed(2);
+    updateAll();
+  });
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    if (currentPatient === '__custom__') resetToMedian();
+    else setPatient(currentPatient);
+  });
+  document.getElementById('median-btn').addEventListener('click', () => {
+    document.getElementById('patient').value = '__custom__';
+    setPatient('__custom__');
+  });
+}
+
+function setPatient(pid) {
+  currentPatient = pid;
+  isModified = false;
+  for (const v of Object.values(valBoxByFeature)) v.classList.remove('modified');
+
+  if (pid === '__custom__') {
+    resetToMedian();
+  } else {
+    const p = participantById[pid];
+    for (const info of model.slider_info) {
+      const v = p.scores[info.name];
+      slidersByFeature[info.name].value = v;
+      valBoxByFeature[info.name].value = formatVal(v, info.units);
+    }
+  }
+  updateAll();
+}
+
+function resetToMedian() {
+  for (const info of model.slider_info) {
+    slidersByFeature[info.name].value = info.p50;
+    valBoxByFeature[info.name].value = formatVal(info.p50, info.units);
+  }
+}
+
+function onSliderEdit() {
+  if (currentPatient !== '__custom__') {
+    isModified = true;
+    const p = participantById[currentPatient];
+    for (const info of model.slider_info) {
+      const live = parseFloat(slidersByFeature[info.name].value);
+      const orig = p.scores[info.name];
+      const box = valBoxByFeature[info.name];
+      box.classList.toggle('modified', Math.abs(live - orig) > 1e-6);
+    }
+  }
+  updateAll();
+}
+
+// Build the full 206-element feature vector for live prediction.
+// - Slider features: take from sliders
+// - Non-slider features: take from selected participant's imputed values, OR from cohort
+//   mean (=mu, makes z=0) for Custom mode
+function buildFeatureVector() {
+  const M = model.M_full_enet;
+  const feats = M.features;
+  const sliderSet = new Set(model.slider_features);
+  const out = new Float64Array(feats.length);
+  const useParticipant = currentPatient !== '__custom__';
+  const p = useParticipant ? participantById[currentPatient] : null;
+  for (let i = 0; i < feats.length; i++) {
+    const f = feats[i];
+    if (sliderSet.has(f)) {
+      out[i] = parseFloat(slidersByFeature[f].value);
+    } else if (useParticipant) {
+      out[i] = p.scores[f];
+    } else {
+      out[i] = M.mu[i];  // cohort mean → standardized z=0 → no contribution
+    }
+  }
+  return out;
+}
+
+function predictLive() {
+  const M = model.M_full_enet;
+  const x = buildFeatureVector();
+  const z = new Float64Array(x.length);
+  for (let i = 0; i < x.length; i++) z[i] = (x[i] - M.mu[i]) / (M.sd[i] || 1);
+  const out = {};
+  for (const ri of M.rois) {
+    let p = ri.intercept;
+    const c = ri.coefs;
+    for (let i = 0; i < z.length; i++) p += z[i] * c[i];
+    out[ri.roi] = Math.max(0, Math.min(1, p));
+  }
+  return out;
+}
+
+function updateAll() {
+  if (!nvPred) return;
+  const cmap = document.getElementById('colormap').value;
+  const gamma = parseFloat(document.getElementById('amp').value);
+
+  let predLoads, predLabel;
+  if (currentPatient !== '__custom__' && !isModified) {
+    const p = participantById[currentPatient];
+    predLoads = p.enet_loo;
+    predLabel = `Predicted (LOO held-out) — ${currentPatient}`;
+    setBanner(`${currentPatient} — held-out prediction`);
+  } else {
+    predLoads = predictLive();
+    if (currentPatient === '__custom__') {
+      predLabel = `Predicted (custom profile)`;
+      setBanner(`Custom profile — live prediction`);
+    } else {
+      predLabel = `Predicted (modified ${currentPatient})`;
+      setBanner(`${currentPatient} (modified) — live prediction`);
+    }
+  }
+
+  let actualLoads = null, actualLabel = '— no patient selected —';
+  if (currentPatient !== '__custom__') {
+    const p = participantById[currentPatient];
+    actualLoads = p.actual;
+    actualLabel = `Actual lesion — ${currentPatient}`;
+  }
+
+  paintViewer(nvPred, predLoads, cmap, gamma);
+  paintViewer(nvActual, actualLoads, cmap, gamma);
+
+  document.querySelectorAll('.panel-title.predicted')[0].textContent = predLabel;
+  document.querySelectorAll('.panel-title.actual')[0].textContent = actualLabel;
+
+  const legendBar = document.getElementById('legend-bar');
+  legendBar.style.background = COLORMAP_GRADIENTS[cmap] || COLORMAP_GRADIENTS.warm;
+
+  const e = model.loo_summary.enet;
+  const noteSrc = (currentPatient !== '__custom__' && !isModified)
+    ? 'LOO held-out prediction'
+    : 'Live prediction from full-cohort fit';
+  document.getElementById('r2-readout').textContent =
+    `enet LOO  max R²=${e.max_r2.toFixed(2)}  mean=${e.mean_r2.toFixed(2)}  ${noteSrc}`;
+}
+
+function paintViewer(nv, loads, cmap, gamma) {
+  if (!nv) return;
+  const testable = new Set(model.roi_ids);
+  let maxV = 0;
+  if (loads) for (const k in loads) { const v = Math.max(0, loads[k]); if (v > maxV) maxV = v; }
+  if (maxV < 1e-6) maxV = 0.01;
+
+  // normalise to the strongest ROI, then the gamma stretch, so the colour
+  // scale means the same thing whatever the absolute predicted loads are
+  const vals = {};
+  if (loads) {
+    for (const k in loads) {
+      const id = +k;
+      if (!testable.has(id)) continue;
+      const v = Math.max(0, loads[k]);
+      if (v <= 1e-9) continue;
+      vals[id] = Math.pow(Math.min(1, v / maxV), gamma);
+    }
+  }
+  nv.setColormap(cmap);
+  nv.setValues(vals, 'predicted lesion load');
+
+  document.getElementById('legend-min').textContent = '0%';
+  document.getElementById('legend-max').textContent = (maxV * 100).toFixed(1) + '%';
+}
+
+window.addEventListener('load', () => {
+  init().catch(err => {
+    setStatus('Error: ' + err.message + ' — server running?');
+    console.error(err);
+  });
+});
+</script>
+</body>
+</html>

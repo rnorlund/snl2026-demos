@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Real-time symptom-lesion mapping, C-STAR demo</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         margin: 0; padding: 0; background: #1a1a1a; color: #ddd; overflow: hidden; }
+  #container { display: flex; height: 100vh; }
+  #sidebar { width: 440px; padding: 18px 22px; overflow-y: auto;
+             background: #232323; box-sizing: border-box;
+             border-right: 1px solid #333; }
+  #viewer { flex: 1; display: flex; flex-direction: column; background: #000; min-width: 0; }
+  #viewer-header { flex: 0 0 auto; min-height: 36px;
+                   padding: 8px 12px; background: #161616;
+                   border-bottom: 1px solid #333; display: flex;
+                   gap: 14px; align-items: center; flex-wrap: wrap;
+                   font-size: 11px; }
+  #gl-container { flex: 1; position: relative; min-height: 0; }
+  canvas { width: 100%; height: 100%; display: block; }
+  h1 { font-size: 18px; margin: 0 0 4px; color: #fff; }
+  h2 { font-size: 13px; margin: 16px 0 6px; color: #6cf; letter-spacing: .5px;
+       text-transform: uppercase; white-space: nowrap; }
+  p.note { font-size: 12px; line-height: 1.45; color: #aaa; margin: 6px 0 14px; }
+  .slider-row { display: flex; align-items: center; margin: 5px 0; gap: 8px; }
+  .slider-row label { flex: 1; font-size: 12px; color: #ccc; }
+  .slider-row input[type=range] { flex: 1.6; }
+  .wab_subs .slider-row input[type=range] { accent-color: #f08; }
+  .wab_errs .slider-row input[type=range] { accent-color: #c8c; }
+  .pnt_errs .slider-row input[type=range] { accent-color: #6cf; }
+  .demo .slider-row input[type=range] { accent-color: #fa0; }
+  .extrapolating { color: #fa0 !important; font-weight: 600; }
+  .extrap-flag { color: #fa0; font-size: 10px; margin-left: 4px; }
+  .badge.demo { background: #fa0; color: #111; }
+  .slider-row .val { width: 56px; text-align: right; font-size: 12px;
+                     font-family: ui-monospace, monospace; color: #ddd;
+                     background: #1a1a1a; border: 1px solid #333;
+                     border-radius: 3px; padding: 2px 4px;
+                     -moz-appearance: textfield; }
+  .slider-row .val:focus { outline: 1px solid #6cf; color: #fff; }
+  .slider-row .val::-webkit-outer-spin-button,
+  .slider-row .val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .preset-row button { padding: 5px 10px; background: #333; color: #ddd;
+                       border: 1px solid #444; border-radius: 4px; cursor: pointer;
+                       font-size: 11px; display: flex; flex-direction: column;
+                       align-items: center; line-height: 1.2; }
+  .preset-row button:hover { background: #444; }
+  .preset-row .preset-n { font-size: 9px; color: #888; font-weight: 400;
+                          margin-top: 1px; }
+  .reset { margin-top: 14px; padding: 8px 14px; background: #6cf; color: #111;
+           border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
+  .reset:hover { background: #8df; }
+  .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  .control-row label { width: 110px; font-size: 12px; color: #ccc; }
+  .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
+                        border: 1px solid #444; border-radius: 3px; font-size: 12px; }
+  .control-row input[type=range] { flex: 1; accent-color: #fa0; }
+  .control-row .val { width: 40px; text-align: right; font-size: 12px;
+                      font-family: monospace; color: #aaa; }
+  #status { font-size: 11px; color: #888; margin-top: 12px; padding: 8px;
+            background: #1a1a1a; border-radius: 4px; font-family: monospace; }
+  #legend { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+            color: #ddd; }
+  #legend .bar { height: 10px; width: 160px;
+                 background: linear-gradient(to right, #000, #800, #f40, #fa0, #ffe);
+                 border: 1px solid #555; }
+  #legend .ticks { display: flex; justify-content: space-between;
+                   width: 160px; font-family: monospace; font-size: 9px; }
+  #mode-banner { flex: 0 0 auto; padding: 4px 10px; font-size: 12px; color: #fa0;
+                 font-weight: 600; border: 1px solid #fa0;
+                 border-radius: 4px; background: #1f1f1f;
+                 white-space: nowrap; }
+  #polarity-tabs { flex: 0 0 auto; display: flex; gap: 4px; }
+  #polarity-tabs button { padding: 5px 10px; background: #232323;
+                          color: #aaa; border: 1px solid #444;
+                          border-radius: 4px; cursor: pointer;
+                          font-size: 11px; font-weight: 600;
+                          white-space: nowrap; }
+  #polarity-tabs button.active { background: #fa0; color: #111;
+                                 border-color: #fa0; }
+  #legend-stack { display: flex; flex-direction: column; gap: 1px;
+                  font-size: 10px; }
+  #legend-title { white-space: nowrap; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 2px; }
+  .demo-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .demo-row input[type=checkbox] { accent-color: #fa0; flex-shrink: 0; }
+  .demo-row .slider-row { flex: 1; margin: 0; opacity: 0.45; transition: opacity .15s; }
+  .demo-row.active .slider-row { opacity: 1.0; }
+  .dir { font-size: 10px; color: #888; margin-left: 4px; font-style: italic; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px;
+           font-size: 10px; font-weight: 600; white-space: nowrap;
+           flex-shrink: 0; }
+  .badge.wab_subs { background: #f08; color: white; }
+  .badge.wab_errs { background: #c8c; color: #111; }
+  .badge.pnt_errs { background: #6cf; color: #111; }
+  .group-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .dim { opacity: 0.45; pointer-events: none; transition: opacity .2s; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="sidebar">
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v15</span></h1>
+    <p class="note">
+      Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
+      In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
+      That dissociation is what the abstract claims.
+    </p>
+
+    <h2>View controls</h2>
+    <div class="control-row">
+      <label>View mode</label>
+      <select id="viewmode">
+        <option value="wab_subs" selected>WAB subscores → lesion</option>
+        <option value="wab_errs">WAB errors → lesion</option>
+        <option value="pnt_errs">PNT errors → lesion</option>
+        <option value="pnt_unique">PNT errors → lesion (after WAB subscores partialed out)</option>
+      </select>
+    </div>
+    <div class="control-row">
+      <label>Colormap</label>
+      <select id="colormap"></select>
+    </div>
+    <div class="control-row">
+      <label>Saturation γ</label>
+      <input type="range" id="amp" min="0.20" max="6.0" step="0.05" value="0.55">
+      <span class="val" id="amp-val">0.55</span>
+    </div>
+    <p class="note" style="margin-top:0;font-size:11px">
+      γ&lt;1 brightens weak signals; γ&gt;1 emphasizes the strongest peaks. After stretch, values span the full colormap range.
+    </p>
+
+    <div class="group-header">
+      <h2>WAB severity subscores</h2>
+      <span class="badge wab_subs">WAB subscores</span>
+    </div>
+    <div id="wab_subs-group" class="wab_subs"></div>
+
+    <div class="group-header">
+      <h2>WAB errors (10 items)</h2>
+      <span class="badge wab_errs">WAB errors</span>
+    </div>
+    <div id="wab_errs-total" style="font-size:11px;color:#aaa;margin:0 0 6px;font-family:monospace;"></div>
+    <div id="wab_errs-group" class="wab_errs"></div>
+
+    <div class="group-header">
+      <h2>PNT errors (175 items)</h2>
+      <span class="badge pnt_errs">PNT errors</span>
+    </div>
+    <div id="pnt_errs-total" style="font-size:11px;color:#aaa;margin:0 0 6px;font-family:monospace;"></div>
+    <div id="pnt_errs-group" class="pnt_errs"></div>
+
+    <div class="group-header">
+      <h2>Demographic covariates</h2>
+      <span class="badge demo">DEMO</span>
+    </div>
+    <p class="note" style="margin-top:0">All three models include these as covariates so the dissociation is adjusted for age, sex, race, and education.</p>
+    <div id="demo-group" class="demo"></div>
+
+    <h2>Patient presets</h2>
+    <div class="preset-row" id="presets"></div>
+
+    <button class="reset" onclick="resetToMedian()">Reset to cohort median</button>
+
+    <div id="status">Loading model and atlas…</div>
+  </div>
+
+  <div id="viewer">
+    <div id="viewer-header">
+      <div id="mode-banner">Mode: …</div>
+      <div id="polarity-tabs">
+        <button id="tab-damaged" class="active" onclick="setPolarity('damaged')">🔴 Damaged</button>
+        <button id="tab-spared" onclick="setPolarity('spared')">🔵 Spared</button>
+      </div>
+      <div id="legend">
+        <div id="legend-stack">
+          <div id="legend-title">Predicted lesion proportion</div>
+          <div class="bar" id="legend-bar"></div>
+          <div class="ticks"><span id="legend-min">0%</span><span id="legend-mid"></span><span id="legend-max">100%</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="gl-container">
+      <div id="bw" style="width:100%;height:100%"></div>
+    </div>
+  </div>
+</div>
+
+<script src="bw.js"></script>
+<script>
+let model = null;
+let nv = null;
+let polarity = 'damaged';   // 'damaged' (positive predictions) | 'spared' (negative predictions)
+const slidersByFeature = {};
+const demoEnabled = {};     // per-demographic toggle: false → set z=0 (don't control for it)
+
+// Approximate CSS gradients matching NiiVue's named colormaps.
+// Used to update the legend bar so it reflects the actively-rendered colormap.
+const COLORMAP_GRADIENTS = {
+  warm:     'linear-gradient(to right, #000, #800, #f40, #fa0, #ffe)',
+  hot:      'linear-gradient(to right, #000, #c00, #f80, #ff0, #fff)',
+  plasma:   'linear-gradient(to right, #0d0887, #7e03a8, #cc4778, #f89441, #f0f921)',
+  viridis:  'linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725)',
+  inferno:  'linear-gradient(to right, #000004, #420a68, #932667, #dd513a, #fcffa4)',
+  magma:    'linear-gradient(to right, #000004, #3b0f70, #8c2981, #de4968, #fcfdbf)',
+  turbo:    'linear-gradient(to right, #30123b, #466be3, #28bbeb, #a4fc3c, #fbb938, #d3151a, #7a0403)',
+  jet:      'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000, #800000)',
+  cool:     'linear-gradient(to right, #00ffff, #00bfff, #4080ff, #8040ff, #ff00ff)',
+  gray2red: 'linear-gradient(to right, #808080, #c04040, #ff0000)',
+  red:      'linear-gradient(to right, #400000, #800000, #ff0000)',
+  winter:   'linear-gradient(to right, #0000ff, #0080c0, #00ff80)',
+  actc:     'linear-gradient(to right, #000, #f00, #ff0, #fff)',
+};
+
+// Per-polarity colormap memory. We seed Damaged → 'warm' and Spared → 'cool' as defaults.
+// When the user manually picks a colormap while a polarity is active, we update that polarity's
+// remembered choice. On polarity switch we restore that polarity's last choice, so the user's
+// selection is preserved across polarity toggles.
+const colormapByPolarity = { damaged: 'warm', spared: 'cool' };
+
+function setPolarity(p) {
+  polarity = p;
+  document.getElementById('tab-damaged').classList.toggle('active', p === 'damaged');
+  document.getElementById('tab-spared').classList.toggle('active', p === 'spared');
+  const cmapSelect = document.getElementById('colormap');
+  cmapSelect.value = colormapByPolarity[p];
+  updateLesion();
+}
+
+// Each mode points at one trained model and the feature group whose sliders drive it.
+const MODE_DESC = {
+  wab_subs:   { name: 'WAB subscores → lesion',                              modelKey: 'M_wab_subs',   featGroup: 'wab_subs' },
+  wab_errs:   { name: 'WAB errors → lesion',                                 modelKey: 'M_wab_errs',   featGroup: 'wab_errs' },
+  pnt_errs:   { name: 'PNT errors → lesion',                                 modelKey: 'M_pnt_errs',   featGroup: 'pnt_errs' },
+  pnt_unique: { name: 'PNT errors → lesion (after WAB subscores partialed)', modelKey: 'M_pnt_unique', featGroup: 'pnt_errs' },
+};
+
+async function init() {
+  setStatus('Loading model.json…');
+  const resp = await fetch('model.json');
+  model = await resp.json();
+  buildSliders();
+  buildPresets();
+  buildControls();
+
+  setStatus('Loading brainWhiz…');
+  // brainWhiz carries its own JHU atlas and draws the three planes plus the
+  // 3D render; we only ever hand it per-region numbers.
+  nv = BW.mount(document.getElementById('bw'),
+                { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  BW.cmapPicker(document.getElementById('colormap'), nv, 'warm');
+  await nv.ready;
+
+
+  setStatus(`Loaded model. N per lens: WAB-subs=${model.n_samples.wab_subs}, WAB-errs=${model.n_samples.wab_errs}, PNT-errs=${model.n_samples.pnt_errs}, PNT-unique=${model.n_samples.pnt_unique}.`);
+  resetToMedian();
+}
+
+function setStatus(s) { document.getElementById('status').textContent = s; }
+function setBanner(s) { document.getElementById('mode-banner').textContent = 'Mode: ' + s; }
+
+function updateErrorTotals() {
+  // Both error groups are PROPORTIONS, so they should sum to ≤ 1.0 (correct + self-correct etc fill the rest)
+  for (const [key, label, total_items] of [['wab_errs','WAB',10], ['pnt_errs','PNT',175]]) {
+    let sum = 0;
+    for (const f of model[key + '_features']) {
+      sum += parseFloat(slidersByFeature[f].value) || 0;
+    }
+    const el = document.getElementById(key + '-total');
+    if (!el) continue;
+    let color = '#9d9';
+    if (sum > 0.65) color = '#fa0';
+    if (sum > 1.0) color = '#f44';
+    const flag = sum > 1.0 ? `  ⚠ proportions sum > 1.0, impossible profile` : '';
+    el.style.color = color;
+    el.textContent = `Σ ${label} error proportions = ${sum.toFixed(2)} (${(sum*100).toFixed(0)}% of ${total_items} items)${flag}`;
+  }
+}
+
+// Slider value IS the underlying WAB score directly. Higher slider = higher WAB = better performance.
+// Pushing a WAB slider right makes the patient healthier → predicted lesion shrinks.
+const DIRECTION_TAG = {
+  wab_subs: '↑ = better, ↓ = severe',
+  wab_errs: '↑ = more errors',
+  pnt_errs: '↑ = more errors',
+  demo: '',
+};
+
+function actualUnderlyingValue(info) {
+  return parseFloat(slidersByFeature[info.name].value);
+}
+
+function sliderPosFromUnderlying(info, underlying) {
+  return underlying;
+}
+
+function buildSliders() {
+  for (const info of model.slider_info) {
+    const group = document.getElementById(info.group + '-group');
+
+    // Build the slider row
+    const innerRow = document.createElement('div');
+    innerRow.className = 'slider-row';
+    const lbl = document.createElement('label');
+    lbl.innerHTML = info.pretty + (DIRECTION_TAG[info.group] ? `<span class="dir">${DIRECTION_TAG[info.group]}</span>` : '');
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = info.min; slider.max = info.max;
+    // Use 0.01 floor so error-proportion sliders (0-1 range) move in 1% increments;
+    // larger ranges still get reasonable steps via the /200 divisor.
+    slider.step = Math.max(0.01, (info.max - info.min) / 200);
+    slider.value = info.p50;
+    // Type-able number input replaces the read-only span, lets users type exact values like 1.00
+    const val = document.createElement('input');
+    val.type = 'number';
+    val.className = 'val';
+    val.min = info.min;
+    val.max = info.max;
+    val.step = slider.step;
+    val.value = formatVal(parseFloat(slider.value), info.units);
+    val.addEventListener('input', () => {
+      const v = parseFloat(val.value);
+      if (!isNaN(v) && v >= info.min && v <= info.max) {
+        slider.value = v;
+        slider.dispatchEvent(new Event('input'));
+      }
+    });
+
+    let extrapFlag = null;
+    if (info.extrapolation_below !== null && info.extrapolation_below !== undefined) {
+      extrapFlag = document.createElement('span');
+      extrapFlag.className = 'extrap-flag';
+      extrapFlag.textContent = '';
+      extrapFlag.title = `Empirical minimum in C-STAR was ${info.extrapolation_below}; values below are extrapolation.`;
+    }
+
+    slidersByFeature[info.name] = slider;
+    slider.addEventListener('input', () => {
+      const sliderVal = parseFloat(slider.value);
+      // Don't overwrite while user is typing, only sync if focus isn't on the input
+      if (document.activeElement !== val) val.value = formatVal(sliderVal, info.units);
+      if (info.extrapolation_below !== null && info.extrapolation_below !== undefined) {
+        const extrapolating = sliderVal < info.extrapolation_below;
+        val.classList.toggle('extrapolating', extrapolating);
+        if (extrapFlag) extrapFlag.textContent = extrapolating ? `(extrapolated, obs min ${info.extrapolation_below})` : '';
+      }
+      updateErrorTotals();
+      updateLesion();
+    });
+    innerRow.appendChild(lbl);
+    innerRow.appendChild(slider);
+    innerRow.appendChild(val);
+    if (extrapFlag) innerRow.appendChild(extrapFlag);
+
+    if (info.group === 'demo') {
+      // Wrap the slider with a per-demographic enable checkbox
+      const wrap = document.createElement('div');
+      wrap.className = 'demo-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = false;
+      cb.title = 'Enable to control for this variable';
+      demoEnabled[info.name] = false;
+      cb.addEventListener('change', () => {
+        demoEnabled[info.name] = cb.checked;
+        wrap.classList.toggle('active', cb.checked);
+        slider.disabled = !cb.checked;
+        updateLesion();
+      });
+      slider.disabled = true;
+      wrap.appendChild(cb);
+      wrap.appendChild(innerRow);
+      group.appendChild(wrap);
+    } else {
+      group.appendChild(innerRow);
+    }
+  }
+}
+
+function buildControls() {
+  document.getElementById('viewmode').addEventListener('change', () => {
+    updateDimming();
+    updateLesion();
+  });
+  document.getElementById('colormap').addEventListener('change', (e) => {
+    // Remember this colormap as the user's choice for the current polarity
+    colormapByPolarity[polarity] = e.target.value;
+    updateLesion();
+  });
+  const amp = document.getElementById('amp');
+  amp.addEventListener('input', () => {
+    document.getElementById('amp-val').textContent = parseFloat(amp.value).toFixed(2);
+    updateLesion();
+  });
+}
+
+function updateDimming() {
+  const mode = document.getElementById('viewmode').value;
+  const desc = MODE_DESC[mode];
+  // Highlight only the slider group whose features actually drive this view (plus, for pnt_unique,
+  // the WAB-subs group is informational since they were partialed out in training).
+  for (const grp of ['wab_subs', 'wab_errs', 'pnt_errs']) {
+    const el = document.getElementById(grp + '-group');
+    if (el) el.classList.toggle('dim', grp !== desc.featGroup);
+  }
+  setBanner(desc.name);
+}
+
+function formatVal(v, units) {
+  if (units === '/10') return v.toFixed(1);
+  if (units === 'prop') return v.toFixed(2);   // proportions show 2 decimals (0.01 increments)
+  return v.toFixed(0);                          // counts, years, levels show as integer
+}
+
+function buildPresets() {
+  // Presets use the new feature-name schema. Error proportions sum to ≤ 1.0.
+  const presets = {
+    'Mild anomic': {
+      'WABInformation Content': 9, 'WABFluency Rating': 9,
+      'WABComprehension Subscore': 9.5, 'WABRepetition Subscore': 9.5,
+      'WABNaming subscore': 7,
+      wabFormal_prop: 0.05, wabMixed_prop: 0.02, wabNR_prop: 0.10,
+      wabNeologism_prop: 0.0, wabSemantic_prop: 0.05, wabUnrelated_prop: 0.05,
+      pntFormal_prop: 0.05, pntMixed_prop: 0.02, pntNR_prop: 0.10,
+      pntNeologism_prop: 0.01, pntSemantic_prop: 0.05, pntUnrelated_prop: 0.05,
+    },
+    'Broca': {
+      'WABInformation Content': 4, 'WABFluency Rating': 2,
+      'WABComprehension Subscore': 7, 'WABRepetition Subscore': 4,
+      'WABNaming subscore': 4,
+      wabFormal_prop: 0.10, wabMixed_prop: 0.05, wabNR_prop: 0.30,
+      wabNeologism_prop: 0.05, wabSemantic_prop: 0.05, wabUnrelated_prop: 0.10,
+      pntFormal_prop: 0.10, pntMixed_prop: 0.05, pntNR_prop: 0.25,
+      pntNeologism_prop: 0.05, pntSemantic_prop: 0.05, pntUnrelated_prop: 0.10,
+    },
+    'Wernicke': {
+      'WABInformation Content': 4, 'WABFluency Rating': 6,
+      'WABComprehension Subscore': 5, 'WABRepetition Subscore': 3,
+      'WABNaming subscore': 3,
+      wabFormal_prop: 0.15, wabMixed_prop: 0.10, wabNR_prop: 0.20,
+      wabNeologism_prop: 0.10, wabSemantic_prop: 0.10, wabUnrelated_prop: 0.15,
+      pntFormal_prop: 0.20, pntMixed_prop: 0.05, pntNR_prop: 0.15,
+      pntNeologism_prop: 0.20, pntSemantic_prop: 0.10, pntUnrelated_prop: 0.10,
+    },
+    'Conduction': {
+      'WABInformation Content': 7, 'WABFluency Rating': 7,
+      'WABComprehension Subscore': 8, 'WABRepetition Subscore': 4,
+      'WABNaming subscore': 6,
+      wabFormal_prop: 0.20, wabMixed_prop: 0.05, wabNR_prop: 0.10,
+      wabNeologism_prop: 0.05, wabSemantic_prop: 0.03, wabUnrelated_prop: 0.05,
+      pntFormal_prop: 0.30, pntMixed_prop: 0.05, pntNR_prop: 0.10,
+      pntNeologism_prop: 0.05, pntSemantic_prop: 0.03, pntUnrelated_prop: 0.05,
+    },
+    'Global': {
+      'WABInformation Content': 1, 'WABFluency Rating': 1,
+      'WABComprehension Subscore': 4, 'WABRepetition Subscore': 1.5,
+      'WABNaming subscore': 1,
+      wabFormal_prop: 0.05, wabMixed_prop: 0.05, wabNR_prop: 0.65,
+      wabNeologism_prop: 0.02, wabSemantic_prop: 0.02, wabUnrelated_prop: 0.10,
+      pntFormal_prop: 0.05, pntMixed_prop: 0.02, pntNR_prop: 0.70,
+      pntNeologism_prop: 0.02, pntSemantic_prop: 0.02, pntUnrelated_prop: 0.05,
+    },
+  };
+  // C-STAR cohort counts per WAB-classified aphasia type (from behavioral_for_lesion_modeling.csv)
+  const PRESET_N = {
+    'Mild anomic': 79,
+    'Broca':       104,
+    'Wernicke':    15,
+    'Conduction':  33,
+    'Global':      18,
+  };
+  const container = document.getElementById('presets');
+  for (const name of Object.keys(presets)) {
+    const btn = document.createElement('button');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    const nSpan = document.createElement('span');
+    nSpan.className = 'preset-n';
+    nSpan.textContent = `n=${PRESET_N[name] || '?'}`;
+    btn.appendChild(nameSpan);
+    btn.appendChild(nSpan);
+    btn.title = `${name} aphasia type, ${PRESET_N[name]} patients in C-STAR cohort`;
+    btn.onclick = () => applyPreset(presets[name]);
+    container.appendChild(btn);
+  }
+}
+
+function infoOf(featName) {
+  return model.slider_info.find(s => s.name === featName);
+}
+
+function applyPreset(values) {
+  for (const f of Object.keys(values)) {
+    const s = slidersByFeature[f];
+    if (!s) continue;
+    const info = infoOf(f);
+    s.value = sliderPosFromUnderlying(info, values[f]);
+    s.dispatchEvent(new Event('input'));
+  }
+}
+
+function resetToMedian() {
+  for (const info of model.slider_info) {
+    slidersByFeature[info.name].value = sliderPosFromUnderlying(info, info.p50);
+    slidersByFeature[info.name].dispatchEvent(new Event('input'));
+  }
+  updateDimming();
+}
+
+// Each model M carries its own feature list, mu (means), sd (stds).
+// predictWithLens returns the raw prediction (intercept + sum(z * coef)).
+// updateLesion handles the polarity:
+//   Damaged: max(0, prediction), where the patient has lesion
+//   Spared:  max(0, intercept − prediction), where the patient has LESS lesion than the cohort average
+// Done this way so the default median-patient view shows the cohort-baseline lesion pattern in Damaged.
+function predictWithLens(M) {
+  const out = new Float32Array(190);
+  const z = M.features.map((f, i) => {
+    const info = infoOf(f);
+    if (info && info.group === 'demo' && !demoEnabled[f]) return 0;
+    const v = parseFloat(slidersByFeature[f].value);
+    return (v - M.mu[i]) / (M.sd[i] || 1);
+  });
+  for (const ri of M.rois) {
+    let p = ri.intercept;
+    for (let i = 0; i < z.length; i++) p += z[i] * ri.coefs[i];
+    out[ri.roi] = p;
+  }
+  return out;
+}
+
+function updateLesion() {
+  if (!nv) return;
+  const mode = document.getElementById('viewmode').value;
+  const cmap = document.getElementById('colormap').value;
+  const amp  = parseFloat(document.getElementById('amp').value);
+  const desc = MODE_DESC[mode];
+
+  const M = model[desc.modelKey];
+  const loads = predictWithLens(M);
+
+  const testable = new Set(M.rois.map(r => r.roi));
+
+  // Per-ROI baseline (intercept), the cohort-average lesion proportion in this ROI.
+  // Spared mode shows max(0, baseline − prediction): how much LESS lesion this patient has
+  // than the cohort average. Damaged mode shows max(0, prediction): raw predicted lesion.
+  const baseline = {};
+  for (const ri of M.rois) baseline[ri.roi] = ri.intercept;
+
+  function display(roiId) {
+    const v = loads[roiId];
+    return polarity === 'damaged'
+      ? Math.max(0, v)
+      : Math.max(0, (baseline[roiId] || 0) - v);
+  }
+
+  // Histogram-stretch over the displayed values
+  let minPos = Infinity, maxPos = 0;
+  for (const ri of M.rois) {
+    const v = display(ri.roi);
+    if (v > 1e-9) {
+      if (v < minPos) minPos = v;
+      if (v > maxPos) maxPos = v;
+    }
+  }
+  if (!isFinite(minPos)) minPos = 0;
+  if (maxPos < 1e-6) maxPos = 0.01;
+
+  const range = Math.max(maxPos - minPos, 1e-9);
+  const gamma = amp; // amp slider repurposed as gamma; default 0.55 brightens weak values
+
+  // stretch across the range actually present, then gamma, so the colour
+  // scale reads the same whichever lens and polarity are showing
+  const vals = {};
+  for (const ri of M.rois) {
+    const raw = display(ri.roi);
+    if (raw <= 1e-9) continue;
+    vals[ri.roi] = Math.pow(Math.max(0, Math.min(1, (raw - minPos) / range)), gamma);
+  }
+  nv.setColormap(cmap);
+  nv.setValues(vals, 'predicted lesion');
+
+  // Update legend bar gradient to match active colormap
+  const legendBar = document.getElementById('legend-bar');
+  if (legendBar && COLORMAP_GRADIENTS[cmap]) {
+    legendBar.style.background = COLORMAP_GRADIENTS[cmap];
+  }
+
+  // Legend reflects actual values (testable voxel max in % of lesion proportion)
+  const titles = {
+    wab_subs:   'Predicted lesion, WAB subscores',
+    wab_errs:   'Predicted lesion, WAB errors (10-item)',
+    pnt_errs:   'Predicted lesion, PNT errors (175-item)',
+    pnt_unique: 'Predicted lesion, PNT errors after WAB-subs partialed',
+  };
+  const polarityTag = polarity === 'damaged' ? ' (damaged)' : ' (spared)';
+  document.getElementById('legend-title').textContent = titles[mode] + polarityTag;
+  document.getElementById('legend-min').textContent = (minPos * 100).toFixed(1) + '%';
+  document.getElementById('legend-mid').textContent = ((minPos + maxPos) * 50).toFixed(1) + '%';
+  document.getElementById('legend-max').textContent = (maxPos * 100).toFixed(1) + '%';
+}
+
+window.addEventListener('load', () => {
+  init().catch(err => {
+    setStatus('Error: ' + err.message + ', server running?');
+    console.error(err);
+  });
+});
+</script>
+</body>
+</html>

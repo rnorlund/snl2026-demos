@@ -1,0 +1,556 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reading aphasia severity out of a stroke note</title>
+<style>
+  :root{
+    --ink:#20242b; --dim:#6b7280; --line:#e2e0db; --bg:#faf8f4; --card:#fff;
+    --rust:#BC6C25; --tan:#DDA15E; --olive:#606C38; --bark:#7F4F24; --garnet:#9e1b32;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  header{padding:20px 28px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+  h1{margin:0 0 6px;font-size:21px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--dim);font-size:13.5px;max-width:82ch}
+  .wrap{display:grid;grid-template-columns:1.25fr 1fr;gap:22px;padding:22px 28px 30px;
+        align-items:start;max-width:1500px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  h2{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;margin:0 0 12px;color:var(--dim)}
+  .examples{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:13px}
+  .examples button{padding:7px 13px;border-radius:999px;border:1px solid var(--line);
+    background:#f3f1ec;color:var(--ink);font-size:12.5px;cursor:pointer}
+  .examples button:hover{background:#e9e6df}
+  .examples button.on{background:var(--garnet);border-color:var(--garnet);color:#fff}
+  #note{width:100%;min-height:210px;border:1px solid var(--line);border-radius:9px;
+    padding:13px 14px;font:13.5px/1.68 ui-monospace,SFMono-Regular,Menlo,monospace;
+    resize:vertical;background:#fdfcfa;color:var(--ink)}
+  .hl{padding:13px 14px;border:1px solid var(--line);border-radius:9px;background:#fdfcfa;
+    font:13.5px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;min-height:210px;
+    white-space:pre-wrap;max-height:560px;overflow-y:auto}
+  mark{border-radius:3px;padding:1px 2px}
+  .lv{margin:0 0 15px}
+  .lv .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .lv .nm{font-weight:650;font-size:14px}
+  .lv .pc{font-variant-numeric:tabular-nums;font-size:15px;font-weight:700}
+  .track{height:15px;background:#eeece6;border-radius:8px;overflow:hidden;margin-top:6px}
+  .track > i{display:block;height:100%;border-radius:8px;transition:width .22s ease}
+  .why{font-size:11.5px;color:var(--dim);margin-top:5px;min-height:15px}
+  .legend{font-size:11.5px;color:var(--dim);margin-top:4px}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:3px;
+    vertical-align:-1px;margin:0 3px 0 9px}
+  footer{border-top:1px solid var(--line);padding:11px 28px;color:var(--dim);font-size:11.5px;
+    background:var(--card)}
+  .warn{background:#fdf6ec;border:1px solid #e8d9bf;border-radius:9px;padding:10px 13px;
+    font-size:12.5px;color:#6b5330;margin-bottom:14px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .chip{font:12px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;padding:5px 9px;
+    border-radius:7px;border:1px solid var(--line);background:#f3f1ec;cursor:pointer;
+    color:var(--ink)}
+  .chip .w{color:var(--dim);font-size:10.5px;margin-left:3px}
+  .chip .ng{display:inline-block;min-width:13px;height:13px;line-height:13px;text-align:center;
+    border-radius:3px;background:rgba(0,0,0,.14);color:#4a463f;font-size:9.5px;
+    margin-right:5px;vertical-align:1px}
+  .chip.off .ng{background:rgba(0,0,0,.06);color:#b6b1a8}
+  .ngtab{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  .ngtab th{text-align:left;font-weight:700;color:var(--dim);font-size:10.5px;
+    text-transform:uppercase;letter-spacing:.05em;padding:4px 8px 4px 0;white-space:nowrap}
+  .ngtab td{padding:4px 8px 4px 0;vertical-align:top;border-top:1px solid var(--line)}
+  .ngtab code{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:#f3f1ec;
+    border-radius:4px;padding:1px 5px;margin:0 3px 3px 0;display:inline-block}
+  .chip.off{text-decoration:line-through;color:#b6b1a8;background:none}
+  .chip:hover{filter:brightness(.95)}
+  mark{cursor:pointer;transition:opacity .15s,filter .15s}
+  mark:hover{filter:brightness(.93)}
+  mark.off{background:none!important;opacity:1!important;color:#b6b1a8;
+    text-decoration:line-through;text-decoration-thickness:2px}
+  .toggles{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
+  .sw{display:flex;align-items:center;gap:7px;font-size:12.5px;cursor:pointer;
+    padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:#f3f1ec}
+  .sw input{accent-color:var(--garnet);margin:0}
+  .sw.on{background:#f6e7e9;border-color:#d9a8b0}
+  .cmp{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:5px}
+  .cmp .box{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fbfaf7}
+  .cmp .box h3{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--dim);font-weight:700}
+  .mini{display:flex;align-items:center;gap:7px;margin:3px 0;font-size:12px}
+  .mini .t{height:9px;flex:1;background:#eeece6;border-radius:5px;overflow:hidden}
+  .mini .t>i{display:block;height:100%;border-radius:5px}
+  .mini .p{font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+  .delta{font-size:11.5px;margin-top:6px;min-height:16px}
+  .up{color:#9a3412;font-weight:650} .dn{color:#3f6212;font-weight:650}
+  .hintline{font-size:11.5px;color:var(--dim);margin-top:7px}
+  @media (max-width:980px){.wrap{grid-template-columns:1fr}}
+</style>
+
+<header>
+  <h1>Reading aphasia severity out of a stroke note</h1>
+  <p>The NIHSS language item compresses every way a person can lose language into a 0&ndash;3 score,
+     and most hospital records never carry it. The same encounter does leave several hundred words
+     of narrative. Type or edit a note below and watch the model score it, with the phrases that
+     drove each decision highlighted.</p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Admission note</h2>
+    <div class="warn"><strong>Synthetic text.</strong> These examples were written for this demo in
+      clinical register. They are not real notes and contain no patient information.</div>
+    <div class="examples" id="ex"></div>
+    <textarea id="note" spellcheck="false"></textarea>
+    <h2 style="margin-top:16px">What the model actually reads
+      <span id="chipCount" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+    <div id="chips" class="chips"></div>
+    <h2 style="margin-top:16px">…in context</h2>
+    <div class="hl" id="hl"></div>
+    <div class="toggles">
+      <label class="sw" id="swGrid"><input type="checkbox" id="grid">
+        paste a templated NIHSS grid into the note</label>
+      <label class="sw" id="swLen"><input type="checkbox" id="len" checked>
+        show the length-only baseline</label>
+      <button id="reset" style="margin-left:auto;padding:6px 12px;border-radius:999px;
+        border:1px solid var(--line);background:#f3f1ec;font-size:12.5px;cursor:pointer">
+        restore knocked-out phrases</button>
+      <button id="revert" hidden style="padding:6px 12px;border-radius:999px;
+        border:1px solid var(--line);background:#f3f1ec;font-size:12.5px;cursor:pointer">
+        revert this note</button>
+    </div>
+    <div class="hintline">Click any highlighted phrase to knock it out of the model's
+      input and watch the prediction move.</div>
+    <div class="legend">
+      <span class="swatch" style="background:#cfe0c3"></span>toward no aphasia
+      <span class="swatch" style="background:#f2d9b8"></span>toward mild&ndash;moderate
+      <span class="swatch" style="background:#e8b894"></span>toward severe
+      &nbsp;&middot;&nbsp; stronger shading = larger weight
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Predicted NIHSS-9 (best language)</h2>
+    <div id="out"></div>
+    <div class="delta" id="delta"></div>
+    <div id="cmp"></div>
+    <h2 style="margin-top:22px">What counts as a feature</h2>
+    <p id="ngIntro" style="font-size:12.5px;color:var(--dim);margin:0 0 4px"></p>
+    <div id="ngTable"></div>
+    <p style="font-size:11.5px;color:var(--dim);margin:8px 0 0">
+      The number on each chip above is that phrase's length. Longer n-grams carry the
+      negation that single words lose: <code>dysarthria</code> alone says nothing about
+      direction, while <code>without dysarthria</code> and <code>speech without
+      dysarthria</code> point the opposite way from <code>speech with dysarthria</code>.
+    </p>
+
+    <h2 style="margin-top:22px">Why "intact" and not "comprehension intact"</h2>
+    <p>Because the second phrase barely exists in these notes. Across the 1,227
+    admission notes, <b>intact</b> appears in 86%, but the word before it is
+    almost always <i>sensation</i> (704), <i>grossly</i> (663), <i>fields</i>
+    (590) or <i>movements</i> (176) &mdash; not a language term.
+    <b>comprehension</b> appears in 4% of notes, <b>naming</b> and
+    <b>repetition</b> in 2%, and when comprehension is described it reads
+    "comprehension <i>was</i> intact", so the two words are never adjacent for a
+    bigram to catch. The words <b>aphasia</b> and <b>aphasic</b> are deleted
+    from every note before training, because a note saying "global aphasia" is
+    simply restating the label.</p>
+    <p>So the model is not reading the language exam &mdash; it mostly cannot,
+    because the language exam is rarely written down. It is reading the general
+    neurological exam, where thoroughness and normality covary with language
+    status. That is the finding, not a limitation of the highlighting.</p>
+
+    <h2 style="margin-top:22px">How this works</h2>
+    <p style="font-size:12.5px;color:var(--dim);margin:0">
+      One L2-regularised logistic regression per severity level, over TF-IDF n-grams of one to
+      three words, trained on 1,227 admission notes from 1,173 acute-stroke patients and
+      validated with patient-grouped 5-fold cross-validation (ROC-AUC 0.80 / 0.75 / 0.86). Templated NIHSS
+      scoring grids were stripped from the notes first, so the model reads narrative only.
+      A length-only baseline sits near chance at 0.58 / 0.53 / 0.46.
+    </p>
+  </div>
+</div>
+
+<footer>Top-weighted clinical terms only &mdash; screened to exclude digits, dates and
+  institution or person-shaped words. No notes and no patient data are included or transmitted.</footer>
+
+<script>
+// Synthetic notes, written for this demo. Not derived from any real record.
+const EXAMPLES = {
+  "No aphasia": `NEUROLOGY CONSULT NOTE
+
+HISTORY OF PRESENT ILLNESS
+Patient is a right-handed adult with a history of hypertension and
+hyperlipidemia who was in the usual state of health until this morning, when
+a family member noted sudden onset of clumsiness of the right hand while
+preparing breakfast. No reported headache, no chest pain, no palpitations.
+Symptoms were maximal at onset and have improved over the intervening hours.
+Last known well was approximately two hours prior to arrival. No recent
+trauma, no recent surgery, no anticoagulant use.
+
+REVIEW OF SYSTEMS
+Negative for fever, chills, cough, dyspnea, nausea, vomiting, visual change,
+neck pain, or bowel and bladder dysfunction. All other systems reviewed and
+negative.
+
+GENERAL EXAMINATION
+Afebrile. Blood pressure elevated on arrival, now improved. Regular rate and
+rhythm. Lungs clear to auscultation bilaterally. Abdomen soft and nontender.
+No peripheral edema.
+
+NEUROLOGICAL EXAMINATION
+Patient is awake, alert and oriented to person, place and time. Speech is
+fluent and clear, without dysarthria and without slurring. Names objects and
+repeats phrases without difficulty. Comprehension was intact to conversational
+questions and to multi-step instructions. Follows one step and two step
+commands reliably. No paraphasic errors, no word finding hesitation.
+Cranial nerves: pupils equal and reactive, extraocular movements intact,
+visual fields intact to confrontation, face symmetrical with normal smile,
+tongue midline, palate elevates symmetrically. Motor: full strength
+throughout with no pronator drift. Sensation grossly intact to light touch.
+Coordination: mild dysmetria on right finger to nose, improving.
+Gait deferred.
+
+IMAGING
+Noncontrast head CT without acute hemorrhage. CT angiography without large
+vessel occlusion. MRI pending.
+
+ASSESSMENT AND PLAN
+Likely small vessel ischemic event with resolving right hand symptoms.
+Admit to stroke unit for telemetry, serial neurological examinations,
+antiplatelet therapy and secondary prevention workup.`,
+
+  "Mild to moderate": `HISTORY AND PHYSICAL
+
+HISTORY OF PRESENT ILLNESS
+Patient presents with acute onset of slurred speech and right sided weakness
+first noticed by a coworker earlier today. Patient reports difficulty getting
+words out and describes the sensation of knowing the word but not being able
+to produce it. No loss of consciousness, no seizure activity, no headache.
+Past medical history notable for atrial fibrillation, diabetes and prior
+transient ischemic attack.
+
+REVIEW OF SYSTEMS
+Unable to obtain a complete review of systems secondary to expressive
+difficulty; obtained in part from the accompanying family member. Negative
+for fever, chest pain and shortness of breath.
+
+GENERAL EXAMINATION
+Vital signs stable. Irregularly irregular rhythm. No carotid bruit. Lungs
+clear. Extremities warm and well perfused.
+
+NEUROLOGICAL EXAMINATION
+Patient is awake and oriented, cooperative with exam. Speech with mild
+dysarthria and intermittent slurring of words; speech dysarthric but largely
+intelligible. Word finding pauses noted throughout the interview, with
+occasional semantic substitutions on confrontation naming. Repetition of
+short phrases intact, longer phrases effortful. Follows one step commands
+reliably, requires repetition for two step commands. Comprehension appears
+grossly preserved for simple material.
+Cranial nerves: left facial droop at rest with preserved forehead, extraocular
+movements intact, no gaze deviation. Motor: mild right sided weakness with
+pronator drift on the right. Sensation grossly intact. Reflexes symmetric.
+
+IMAGING
+Noncontrast head CT without hemorrhage. CT angiography demonstrates a distal
+branch occlusion. MRI shows a small area of restricted diffusion.
+
+ASSESSMENT AND PLAN
+Acute ischemic stroke in the setting of known atrial fibrillation, presenting
+with dysarthria and expressive language difficulty. Admit to stroke unit.
+Speech and language pathology consultation requested. Anticoagulation to be
+addressed after repeat imaging.`,
+
+  "Severe": `EMERGENCY DEPARTMENT NOTE
+
+HISTORY OF PRESENT ILLNESS
+Patient brought in by emergency medical services after being found down at
+home by a family member. Time last known well is uncertain but reported to be
+within the preceding several hours. No history available directly from the
+patient. Family reports a history of hypertension and prior myocardial
+infarction. No known anticoagulant use.
+
+GENERAL EXAMINATION
+Hypertensive on arrival. Regular rate and rhythm. Lungs with coarse breath
+sounds bilaterally. No external signs of trauma.
+
+NEUROLOGICAL EXAMINATION
+Patient is somnolent and withdraws to noxious stimuli only. Does not follow
+commands and is essentially mute; no verbal output to questioning or to
+noxious stimulation. Language could not be assessed. Unable to assess
+comprehension, naming or repetition; UTA for all language subtests.
+Left gaze preference with forced deviation, does not cross midline.
+Cranial nerves: right facial involvement, corneal reflexes present, gag
+present. Motor: dense right hemiplegia with no antigravity movement on the
+right, left side withdraws purposefully. Reflexes brisk on the right with
+an upgoing toe.
+
+IMAGING
+Noncontrast head CT demonstrates loss of grey white differentiation involving
+a large left MCA territory. CT angiography confirms a proximal occlusion.
+No hemorrhage identified.
+
+ASSESSMENT AND PLAN
+Large left MCA territory infarct with global aphasia and dense right
+hemiplegia. Emergent thrombectomy evaluation. Admit to neurological intensive
+care for close monitoring and serial examinations.`,
+
+  "Blank": ``,
+};
+
+let M = null;
+const OFF = new Set();          // phrases the visitor has knocked out
+// Each example keeps whatever you have typed into it, so you can edit one,
+// go and look at another, and come back to find your text still there.
+// Emptying a box is itself an edit and is remembered as one.
+const DRAFTS = {}, DRAFT_OFF = {};
+let curEx = "No aphasia";
+let lastP = null;               // previous probabilities, for the delta readout
+
+// A templated NIHSS scoring grid of the kind some institutions paste into the
+// note body. Synthetic, written for this demo.
+const GRID = `
+--- NIH STROKE SCALE ---
+1a Level of consciousness: 0
+1b LOC questions: 1
+1c LOC commands: 1
+2  Best gaze: 0
+3  Visual fields: 0
+4  Facial palsy: 1
+5a Motor arm left: 0
+5b Motor arm right: 2
+9  Best language: 1
+10 Dysarthria: 1
+11 Extinction/inattention: 0
+NIHSS TOTAL: 7
+------------------------`;
+const $ = s => document.querySelector(s);
+const COLORS = ["#606C38", "#DDA15E", "#BC6C25"];   // olive, tan, rust
+const TINT   = ["#cfe0c3", "#f2d9b8", "#e8b894"];
+
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+
+function tokenize(text) {
+  const w = text.toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  const grams = new Map();
+  const bump = t => grams.set(t, (grams.get(t) || 0) + 1);
+  const N = (M && M.ngram_max) || 2;
+  for (let n = 1; n <= N; n++)
+    for (let i = 0; i + n <= w.length; i++) bump(w.slice(i, i + n).join(" "));
+  return grams;
+}
+
+function score(text, levels) {
+  const grams = tokenize(text);
+  // sublinear tf x idf, L2 normalised over the terms we shipped
+  return (levels || M.levels).map(L => {
+    const hits = [];
+    let ss = 0;
+    for (const term of L.terms) {
+      const c = grams.get(term.t);
+      if (!c) continue;
+      const v = (1 + Math.log(c)) * term.idf;
+      hits.push({ t: term.t, w: term.w, v });
+      ss += v * v;
+    }
+    const nrm = Math.sqrt(ss) || 1;
+    let z = L.intercept;
+    // every matched term keeps a contribution so it stays visible and
+    // clickable; only the ones still switched on are summed into z
+    hits.forEach(h => {
+      h.contrib = h.w * h.v / nrm;
+      h.off = OFF.has(h.t);
+      if (!h.off) z += h.contrib;
+    });
+    hits.sort((a, b) => Math.abs(b.contrib) - Math.abs(a.contrib));
+    return { name: L.name, p: sigmoid(z), hits };
+  });
+}
+
+function lengthProbs(text) {
+  const n = text.trim() ? text.trim().split(/\s+/).length : 0;
+  return M.length.map(L => ({ name: L.name, p: sigmoid(L.intercept + L.coef * n) }));
+}
+
+function miniRow(name, p, col) {
+  return `<div class="mini"><span style="min-width:96px">${name}</span>
+    <span class="t"><i style="width:${(p*100).toFixed(1)}%;background:${col}"></i></span>
+    <span class="p">${(p*100).toFixed(0)}%</span></div>`;
+}
+
+function renderCompare(text) {
+  const gridOn = $("#grid").checked, lenOn = $("#len").checked;
+  let html = "";
+  if (gridOn) {
+    const narr = score(text, M.levels), raw = score(text, M.raw_levels);
+    html += `<h2 style="margin-top:20px">With the grid pasted in</h2>
+      <div class="cmp">
+        <div class="box"><h3>Raw-trained model</h3>
+          ${raw.map((r,i)=>miniRow(r.name, r.p, COLORS[i])).join("")}
+          <div class="hintline">trained on notes with grids left in</div></div>
+        <div class="box"><h3>Narrative-only (shipped)</h3>
+          ${narr.map((r,i)=>miniRow(r.name, r.p, COLORS[i])).join("")}
+          <div class="hintline">grids stripped before training</div></div>
+      </div>
+      <div class="hintline">The grid states the answer in plain text. A model trained
+        without stripping it leans on that; the narrative-only model cannot see it.
+        Stripping costs real accuracy (0.85 &rarr; 0.80 at level 0) and is why the
+        reported numbers are the honest ones.</div>`;
+  }
+  if (lenOn) {
+    const L = lengthProbs(text);
+    html += `<h2 style="margin-top:20px">Length-only baseline</h2>
+      <div class="box">${L.map((r,i)=>miniRow(r.name, r.p, "#a8a29a")).join("")}
+      <div class="hintline">word count as the only feature &mdash; ROC-AUC
+        0.58 / 0.53 / 0.46, near chance. The real model is reading content,
+        not verbosity.</div></div>`;
+  }
+  $("#cmp").innerHTML = html;
+}
+
+function render() {
+  let text = $("#note").value;
+  if ($("#grid").checked) text += "\n" + GRID;
+  const res = score(text);
+  const best = res.reduce((a, b) => (b.p > a.p ? b : a), res[0]);
+
+  $("#out").innerHTML = res.map((r, i) => {
+    const drivers = r.hits.filter(h => h.contrib > 0 && !h.off).slice(0, 4)
+      .map(h => `"${h.t}"`).join(", ");
+    return `<div class="lv">
+      <div class="top"><span class="nm">${i}: ${r.name}</span>
+        <span class="pc" style="color:${COLORS[i]}">${(r.p * 100).toFixed(0)}%</span></div>
+      <div class="track"><i style="width:${(r.p * 100).toFixed(1)}%;background:${COLORS[i]}"></i></div>
+      <div class="why">${drivers ? "driven by " + drivers : "no supporting terms in this note"}</div>
+    </div>`;
+  }).join("") +
+  `<div style="margin-top:4px;font-size:13px">Most likely: <strong style="color:${
+     COLORS[res.indexOf(best)]}">${best.name}</strong></div>`;
+
+  // highlight. Knocked-out terms stay in the span list so they remain
+  // visible (struck through) and clickable.
+  const strength = new Map();
+  res.forEach((r, li) => r.hits.forEach(h => {
+    if (h.contrib <= 0) return;
+    const prev = strength.get(h.t);
+    if (!prev || h.contrib > prev.c) strength.set(h.t, { c: h.contrib, li });
+  }));
+  const esc = t => t.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+  const spans = [];
+  for (const [t, info] of strength) {
+    const re = new RegExp("\\b" + t.replace(/ /g, "\\s+") + "\\b", "gi");
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      spans.push({ a: m.index, b: m.index + m[0].length, t, ...info });
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
+  }
+  spans.sort((x, y) => (y.b - y.a) - (x.b - x.a) || x.a - y.a);
+  const kept = [];
+  for (const sp of spans) if (!kept.some(k => sp.a < k.b && k.a < sp.b)) kept.push(sp);
+  kept.sort((x, y) => x.a - y.a);
+
+  let html = "", cur = 0;
+  for (const sp of kept) {
+    html += esc(text.slice(cur, sp.a));
+    const off = OFF.has(sp.t);
+    const al = Math.min(0.9, 0.3 + sp.c * 2.2);
+    const tip = `${sp.t} \u2192 ${M.levels[sp.li].name} (+${sp.c.toFixed(3)})`;
+    html += `<mark data-term="${esc(sp.t)}" class="${off ? "off" : ""}" ` +
+      `style="${off ? "" : `background:${TINT[sp.li]};opacity:${al.toFixed(2)}`}" ` +
+      `title="${esc(tip)}${off ? " \u2014 knocked out" : ""}">${esc(text.slice(sp.a, sp.b))}</mark>`;
+    cur = sp.b;
+  }
+  html += esc(text.slice(cur));
+  $("#hl").innerHTML = html || "<span style='color:#9aa'>type a note above</span>";
+
+  // the reduced set the model actually reads, as clickable chips
+  const chips = [...strength.entries()]
+    .sort((x, y) => y[1].c - x[1].c)
+    .map(([t, i]) => {
+      const off = OFF.has(t);
+      return `<button class="chip ${off ? "off" : ""}" data-term="${esc(t)}"
+        title="${esc(t)} \u2192 ${M.levels[i.li].name}"
+        style="${off ? "" : `border-color:${COLORS[i.li]};background:${TINT[i.li]}`}">
+        <span class="ng">${t.split(" ").length}</span>${esc(t)}
+        <span class="w">${(i.c * 100).toFixed(0)}</span></button>`;
+    }).join("");
+  $("#chips").innerHTML = chips ||
+    "<span style='color:#9aa;font-size:12px'>no terms from the model's vocabulary appear in this note</span>";
+  $("#chipCount").textContent = `${strength.size} of the model's terms appear here` +
+    (OFF.size ? ` \u00b7 ${OFF.size} knocked out` : "");
+
+  // bind once, after all innerHTML writes
+  const toggle = t => { OFF.has(t) ? OFF.delete(t) : OFF.add(t); render(); };
+  $("#hl").querySelectorAll("mark").forEach(el =>
+    (el.onclick = () => toggle(el.dataset.term)));
+  $("#chips").querySelectorAll(".chip").forEach(el =>
+    (el.onclick = () => toggle(el.dataset.term)));
+
+  // movement since the last render
+  if (lastP) {
+    const moved = res.map((r, i) => ({ n: r.name, d: r.p - lastP[i] }))
+                     .filter(x => Math.abs(x.d) > 0.005)
+                     .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
+    $("#delta").innerHTML = moved
+      ? `<span class="${moved.d > 0 ? "up" : "dn"}">${moved.d > 0 ? "\u25b2" : "\u25bc"} ${
+          (Math.abs(moved.d) * 100).toFixed(0)} points ${moved.n.toLowerCase()}</span> since last change`
+      : "";
+  }
+  lastP = res.map(r => r.p);
+  $("#revert").hidden = $("#note").value === EXAMPLES[curEx].trim();
+  renderCompare(text);
+}
+
+fetch("soop_model.json").then(r => r.json()).then(m => {
+  M = m;
+  // make the feature space legible: how many of each length exist, and the
+  // strongest surviving example of each, per severity level
+  if (m.vocab_by_order) {
+    const vb = m.vocab_by_order, names = {1:"one word", 2:"two words", 3:"three words"};
+    $("#ngIntro").innerHTML =
+      `A feature is a run of one to three consecutive words. After dropping phrases that ` +
+      `appear in fewer than ${m.min_notes} notes, the vocabulary holds ` +
+      Object.keys(vb).map(n => `<b>${(+vb[n]).toLocaleString()}</b> of ${names[n]}`).join(", ") +
+      `. These are the highest-weighted of each length:`;
+    const rows = m.showcase.map(S => `<tr>
+        <th>${S.name}</th>` + Object.keys(S.by_order).map(n =>
+          `<td>${S.by_order[n].slice(0,3).map(p=>`<code>${p.t}</code>`).join("")}</td>`).join("") +
+      `</tr>`).join("");
+    $("#ngTable").innerHTML = `<table class="ngtab"><tr><th></th>` +
+      Object.keys(vb).map(n=>`<th>${names[n]}</th>`).join("") + `</tr>${rows}</table>`;
+  }
+  const host = $("#ex");
+  Object.keys(EXAMPLES).forEach((k, i) => {
+    const b = document.createElement("button");
+    b.textContent = k;
+    b.onclick = () => {
+      DRAFTS[curEx] = $("#note").value;          // park the current one
+      DRAFT_OFF[curEx] = new Set(OFF);
+      [...host.children].forEach(c => c.classList.remove("on"));
+      b.classList.add("on");
+      curEx = k;
+      $("#note").value = k in DRAFTS ? DRAFTS[k] : EXAMPLES[k].trim();
+      OFF.clear();
+      (DRAFT_OFF[k] || new Set()).forEach(t => OFF.add(t));
+      render();
+    };
+    if (i === 0) b.classList.add("on");
+    host.appendChild(b);
+  });
+  $("#note").value = EXAMPLES["No aphasia"].trim();
+  $("#note").addEventListener("input", () => {
+    DRAFTS[curEx] = $("#note").value;
+    OFF.clear();
+    render();
+  });
+  ["grid", "len"].forEach(id => $("#" + id).addEventListener("change", e => {
+    e.target.closest(".sw").classList.toggle("on", e.target.checked);
+    render();
+  }));
+  $("#swLen").classList.add("on");
+  $("#reset").onclick = () => { OFF.clear(); render(); };
+  $("#revert").onclick = () => {
+    delete DRAFTS[curEx]; delete DRAFT_OFF[curEx];
+    $("#note").value = EXAMPLES[curEx].trim();
+    OFF.clear();
+    render();
+  };
+  render();
+});
+</script>
