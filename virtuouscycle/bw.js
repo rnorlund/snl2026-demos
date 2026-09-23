@@ -99,10 +99,9 @@ const BW = (() => {
       post({ cmd: "setColormap", cmap: style.cmap });
       if (style.cmin != null || style.cmax != null)
         post({ cmd: "setRange", cmin: style.cmin, cmax: style.cmax });
-      if (style.thr != null) post({ cmd: "setThreshold", thr: style.thr });
-      // the bridge command above does not move brainWhiz's threshold slider,
-      // which defaults to half the colour range and hides everything below;
-      // same-origin lets us set the slider itself, as a fraction of the range
+      // Never post the bridge's setThreshold: it drives brainWhiz's threshold
+      // slider to 0.5 of the range and the slider then ignores every later
+      // write. Same-origin lets us set the slider itself instead.
       if (style.thr != null && style.cmax != null) {
         const lo = style.cmin || 0, frac = Math.max(0, Math.min(1, (style.thr - lo) / Math.max(style.cmax - lo, 1e-9)));
         setTimeout(() => set("cthresh", frac), 120);   // never touch #cthreshMode: its change handler resets the slider
