@@ -196,12 +196,12 @@ async function init() {
   // brainWhiz draws the three planes plus the 3D render itself and carries its
   // own JHU atlas, so we hand it per-region numbers and nothing else.
   nvPred = BW.mount(document.getElementById('bw-pred'),
-                    { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
-  BW.cmapPicker(document.getElementById('colormap'), nvPred, 'warm');
+                    { cmap: 'plasma', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  BW.cmapPicker(document.getElementById('colormap'), nvPred, 'plasma');
   // the comparison panel is hidden in the public build; only mount it if shown
   const actualPanel = document.getElementById('bw-actual');
   if (actualPanel.offsetParent !== null) {
-    nvActual = BW.mount(actualPanel, { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+    nvActual = BW.mount(actualPanel, { cmap: 'plasma', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
   }
   await nvPred.ready;
 
@@ -391,7 +391,7 @@ function updateAll() {
   document.querySelectorAll('.panel-title.actual')[0].textContent = actualLabel;
 
   const legendBar = document.getElementById('legend-bar');
-  legendBar.style.background = COLORMAP_GRADIENTS[cmap] || COLORMAP_GRADIENTS.warm;
+  legendBar.style.background = COLORMAP_GRADIENTS[cmap] || COLORMAP_GRADIENTS.plasma || COLORMAP_GRADIENTS.warm;
 
   const e = model.loo_summary.enet;
   const noteSrc = (currentPatient !== '__custom__' && !isModified)

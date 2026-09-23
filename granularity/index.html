@@ -216,7 +216,7 @@ const COLORMAP_GRADIENTS = {
 // When the user manually picks a colormap while a polarity is active, we update that polarity's
 // remembered choice. On polarity switch we restore that polarity's last choice, so the user's
 // selection is preserved across polarity toggles.
-const colormapByPolarity = { damaged: 'warm', spared: 'cool' };
+const colormapByPolarity = { damaged: 'viridis', spared: 'cool' };
 
 function setPolarity(p) {
   polarity = p;
@@ -247,8 +247,8 @@ async function init() {
   // brainWhiz carries its own JHU atlas and draws the three planes plus the
   // 3D render; we only ever hand it per-region numbers.
   nv = BW.mount(document.getElementById('bw'),
-                { cmap: 'warm', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
-  BW.cmapPicker(document.getElementById('colormap'), nv, 'warm');
+                { cmap: 'viridis', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  BW.cmapPicker(document.getElementById('colormap'), nv, 'viridis');
   await nv.ready;
 
 

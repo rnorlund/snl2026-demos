@@ -29,8 +29,9 @@
 const BW = (() => {
   // relative, so the iframe is same-origin wherever this is served from
   const BASE = "/brainWhiz/index.html";
-  const CMAPS = ["hot", "warm", "viridis", "plasma", "magma", "inferno",
-                 "turbo", "jet", "cool", "spring", "bone", "copper"];
+  // names brainWhiz actually has -- read from its #cmap select, not guessed
+  const CMAPS = ["plasma", "viridis", "inferno", "magma", "cividis", "hot",
+                 "fire", "turbo", "YlOrRd", "cool", "coolwarm", "RdBu_rev"];
   // left hemisphere, through the peri-sylvian regions these models care about
   const SLICES = { x: -48, y: -18, z: 14 };
   const SMOOTH = 14;                       // #smooth default is 4, too faceted
@@ -88,13 +89,22 @@ const BW = (() => {
     let tuned = false;
     const retune = () => { if (!tuned) tuned = tune(); else tune(); };
 
+    /* Overlay style. brainWhiz creates the overlay on the first
+       setRegionValues; a colormap posted before that styles nothing and the
+       new overlay comes up with the viewer default. So the style is kept here
+       and re-applied a beat after every value push, not just on ready. */
+    const style = { cmap: opts.cmap || "hot", cmin: opts.cmin, cmax: opts.cmax, thr: opts.thr };
+    const restyle = () => {
+      post({ cmd: "setColormap", cmap: style.cmap });
+      if (style.cmin != null || style.cmax != null)
+        post({ cmd: "setRange", cmin: style.cmin, cmax: style.cmax });
+      if (style.thr != null) post({ cmd: "setThreshold", thr: style.thr });
+    };
+
     window.addEventListener("message", e => {
       if (e.data?.brainWhiz !== true || e.source !== f.contentWindow) return;
       if (e.data.type !== "ready") return;
-      post({ cmd: "setColormap", cmap: opts.cmap || "hot" });
-      if (opts.cmin != null || opts.cmax != null)
-        post({ cmd: "setRange", cmin: opts.cmin, cmax: opts.cmax });
-      if (opts.thr != null) post({ cmd: "setThreshold", thr: opts.thr });
+      restyle();
       // brainWhiz builds its slice DOM a beat after it announces ready
       setTimeout(retune, 400);
       setTimeout(retune, 1500);
@@ -105,11 +115,12 @@ const BW = (() => {
       ready, cmaps: CMAPS, frame: f,
       setValues(values, name) {
         post({ cmd: "setRegionValues", values, name: name || "prediction" });
+        setTimeout(restyle, 150);          // the overlay exists now; style it
         setTimeout(retune, 250);           // re-assert if a redraw reset it
       },
-      setColormap(cmap) { post({ cmd: "setColormap", cmap }); },
-      setRange(cmin, cmax) { post({ cmd: "setRange", cmin, cmax }); },
-      setThreshold(thr) { post({ cmd: "setThreshold", thr }); },
+      setColormap(cmap) { style.cmap = cmap; restyle(); },
+      setRange(cmin, cmax) { style.cmin = cmin; style.cmax = cmax; restyle(); },
+      setThreshold(thr) { style.thr = thr; restyle(); },
       setView(view) { post({ cmd: "setView", view }); },
       setMode(mode) { post({ cmd: "setMode", mode }); setTimeout(retune, 600); },
       setSmooth(v) { set("smooth", v); },
