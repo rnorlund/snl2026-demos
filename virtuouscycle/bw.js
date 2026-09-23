@@ -105,7 +105,7 @@ const BW = (() => {
       // same-origin lets us set the slider itself, as a fraction of the range
       if (style.thr != null && style.cmax != null) {
         const lo = style.cmin || 0, frac = Math.max(0, Math.min(1, (style.thr - lo) / Math.max(style.cmax - lo, 1e-9)));
-        setTimeout(() => { set("cthreshMode", "frac"); set("cthresh", frac); }, 120);
+        setTimeout(() => set("cthresh", frac), 120);   // never touch #cthreshMode: its change handler resets the slider
       }
     };
 
