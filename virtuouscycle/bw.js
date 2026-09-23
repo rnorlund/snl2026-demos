@@ -71,7 +71,8 @@ const BW = (() => {
     const set = (id, v) => {
       const d = doc(); if (!d) return false;
       const el = d.getElementById(id); if (!el) return false;
-      el.value = v; el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.value = v;
+      el.dispatchEvent(new Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
       return true;
     };
     /* Switch the planes to region cross-sections and fix up smoothing and
@@ -99,6 +100,13 @@ const BW = (() => {
       if (style.cmin != null || style.cmax != null)
         post({ cmd: "setRange", cmin: style.cmin, cmax: style.cmax });
       if (style.thr != null) post({ cmd: "setThreshold", thr: style.thr });
+      // the bridge command above does not move brainWhiz's threshold slider,
+      // which defaults to half the colour range and hides everything below;
+      // same-origin lets us set the slider itself, as a fraction of the range
+      if (style.thr != null && style.cmax != null) {
+        const lo = style.cmin || 0, frac = Math.max(0, Math.min(1, (style.thr - lo) / Math.max(style.cmax - lo, 1e-9)));
+        setTimeout(() => { set("cthreshMode", "frac"); set("cthresh", frac); }, 120);
+      }
     };
 
     window.addEventListener("message", e => {
