@@ -82,6 +82,7 @@
     <h2 class="beh">Behavior</h2>
     <p class="sub" id="behSub">10 clinical composites &middot; drag to set</p>
     <button id="whatBtn" class="whatbtn">What are these measures?</button>
+    <button id="rtBtn" class="whatbtn">Why is cosine 0.87 when R&sup2; is 0.21?</button>
     <div class="presets" id="presets"></div>
     <div id="behCol"></div>
   </div>
@@ -113,6 +114,52 @@
 </div>
 
 <footer id="foot">Coefficients only &mdash; no patient records are included or transmitted.</footer>
+
+<div class="modal" id="rt">
+  <div class="sheet">
+    <button class="close" id="rtClose">close</button>
+    <h2>Why cosine is high when R² is not</h2>
+    <p>The round trip takes a patient's ten observed behavioral scores, predicts their fifteen lesion
+      loads, feeds <em>that predicted lesion</em> back in, and reads ten behavioral scores out. It never
+      touches their real lesion. Cosine similarity of 0.87 next to an R² of 0.21 looks contradictory.
+      Three things explain it.</p>
+
+    <h3>1 · Cosine ignores magnitude, and magnitude is what is lost</h3>
+    <p>Returned profiles are shrunk to about <b>40% of observed length</b> — median vector norm 1.20
+      against 2.98. That is regularization pulling predictions toward the mean. R² punishes it heavily;
+      cosine, which measures only angle, cannot see it at all.</p>
+
+    <h3>2 · The two numbers are measured along different axes</h3>
+    <p><b>R² is per element, across patients:</b> of the spread in WAB fluency across 296 people, how much
+      do we capture? <b>Cosine is per patient, across the ten measures:</b> for this person, does the
+      predicted profile point the same way? Getting the shape of a ten-dimensional profile roughly right
+      is a far easier problem than getting each coordinate's magnitude right.</p>
+
+    <h3>3 · The loss happens once, not twice</h3>
+    <p>Both directions share the same five-dimensional latent space, so the return pass is not an
+      independent lossy channel — it comes back through the door it went in.</p>
+    <table>
+      <tr><th>Comparison</th><th>median cosine</th></tr>
+      <tr class="hi"><td>round-trip output vs rank-5 reconstruction of behavior by itself</td><td class="n">0.896</td></tr>
+      <tr><td>rank-5 self-reconstruction vs observed</td><td class="n">0.992</td></tr>
+      <tr><td>observed lesion vs predicted lesion &mdash; the lossy step</td><td class="n">0.453</td></tr>
+    </table>
+
+    <h3>It is still patient-specific</h3>
+    <p>Trivial baselines do not reproduce it, so the fidelity is not a severity artifact:</p>
+    <table>
+      <tr><th>Model</th><th>median cosine</th><th>high fidelity</th></tr>
+      <tr class="hi"><td>round trip</td><td class="n">0.874</td><td class="n">40.0%</td></tr>
+      <tr><td>same profile shape for everyone</td><td class="n">0.020</td><td class="n">1.0%</td></tr>
+      <tr><td>severity only, flat profile</td><td class="n">0.340</td><td class="n">0.0%</td></tr>
+      <tr><td>shuffled predictions</td><td class="n">&minus;0.070</td><td class="n">7.0%</td></tr>
+    </table>
+
+    <p class="foot">Read the round trip as a <b>consistency</b> check, not an accuracy one: one parameter
+      set, read in both directions, returns you to where you started. The accuracy figures are the
+      held-out R²s — 0.21 behavior to lesion, 0.26 lesion to behavior.</p>
+  </div>
+</div>
 
 <div class="modal" id="what">
   <div class="sheet">
@@ -297,9 +344,12 @@ fetch("vc_model.json").then(r => r.json()).then(m => {
       `<tr class="${c.id === "C1" ? "hi" : ""}"><td class="k">${c.id} ${c.reads_as}</td>` +
       `<td>${c.loadings}</td><td class="n">${c.lesion_var.toFixed(3)}</td></tr>`).join("");
   $("#whatBtn").onclick = () => $("#what").classList.add("on");
+  $("#rtBtn").onclick = () => $("#rt").classList.add("on");
+  $("#rtClose").onclick = () => $("#rt").classList.remove("on");
+  $("#rt").onclick = e => { if (e.target.id === "rt") $("#rt").classList.remove("on"); };
   $("#whatClose").onclick = () => $("#what").classList.remove("on");
   $("#what").onclick = e => { if (e.target.id === "what") $("#what").classList.remove("on"); };
-  addEventListener("keydown", e => { if (e.key === "Escape") $("#what").classList.remove("on"); });
+  addEventListener("keydown", e => { if (e.key === "Escape") { $("#what").classList.remove("on"); $("#rt").classList.remove("on"); } });
 
   BWV.ready.then(() => {
     const cs = document.getElementById("cmapSel");
