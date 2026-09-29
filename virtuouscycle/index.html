@@ -24,6 +24,27 @@
   .row .lab{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .row .nm{font-size:13px}
   .row .hint{color:var(--dim);font-size:11px;font-style:italic}
+  .whatbtn{margin:2px 0 10px;background:#24242a;color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;padding:7px 11px;font-size:12.5px;cursor:pointer;width:100%;text-align:left}
+  .whatbtn:hover{border-color:#5a5a64}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;z-index:50;
+    padding:24px 16px;overflow-y:auto}
+  .modal.on{display:block}
+  .sheet{max-width:760px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:22px 24px}
+  .sheet h2{margin:0 0 4px;font-size:19px}
+  .sheet h3{margin:20px 0 7px;font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
+  .sheet p{color:var(--dim);font-size:13.5px;line-height:1.6;margin:0 0 4px}
+  .sheet table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  .sheet th{text-align:left;color:var(--dim);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    padding:0 10px 6px 0;font-weight:600;white-space:nowrap}
+  .sheet td{padding:7px 10px 7px 0;border-top:1px solid var(--line);vertical-align:top}
+  .sheet td.k{white-space:nowrap;color:var(--ink)}
+  .sheet td.n{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sheet tr.hi td{background:#26222a}
+  .sheet .close{float:right;background:none;border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:5px 11px;cursor:pointer;font-size:13px}
+  .sheet .foot{margin-top:18px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
   .row .val{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);min-width:42px;text-align:right}
   input[type=range]{width:100%;margin:4px 0 0;accent-color:var(--beh)}
   .les input[type=range]{accent-color:var(--les)}
@@ -60,6 +81,7 @@
   <div class="col">
     <h2 class="beh">Behavior</h2>
     <p class="sub" id="behSub">10 clinical composites &middot; drag to set</p>
+    <button id="whatBtn" class="whatbtn">What are these measures?</button>
     <div class="presets" id="presets"></div>
     <div id="behCol"></div>
   </div>
@@ -92,6 +114,23 @@
 
 <footer id="foot">Coefficients only &mdash; no patient records are included or transmitted.</footer>
 
+<div class="modal" id="what">
+  <div class="sheet">
+    <button class="close" id="whatClose">close</button>
+    <h2>What the ten measures are</h2>
+    <p id="whatNote"></p>
+    <h3>The five syndrome composites</h3>
+    <table id="whatRecipes"><tr><th>Element</th><th>Sign-weighted mean of</th></tr></table>
+    <h3>The other five are raw clinical measures</h3>
+    <p id="whatRaw"></p>
+    <h3>What the five latent components weight</h3>
+    <table id="whatComps"><tr><th>Component</th><th>Strongest loadings</th><th>Lesion var.</th></tr></table>
+    <p class="foot">Composites are hand-specified, not derived — the clinical picture is written into them.
+      That is why the poster reports a refit with the composites removed: overall severity emerges either
+      way and prediction is unchanged (inverse R² 0.278 → 0.270, forward 0.347 → 0.346).
+      Component 1 carries most of the prediction; modes 2–5 add about 6.5% between them.</p>
+  </div>
+</div>
 <script src="bw.js"></script>
 <script>
 const PRESETS = {
@@ -246,6 +285,22 @@ fetch("vc_model.json").then(r => r.json()).then(m => {
   setMode(); applyPreset("Broca");
   BWV = BW.mount(document.getElementById("viz"),
                  {cmap: "hot", cmin: 0, cmax: 1, thr: 0.05, view: "left", bg: "0e0e10"});
+  // reference sheet: what the sliders actually are
+  const RAW = {syn_broca:1, syn_wernicke:1, syn_conduction:1, syn_global:1, syn_anomic:1};
+  $("#whatNote").textContent = M.measures_note || "";
+  $("#whatRecipes").innerHTML = '<tr><th>Element</th><th>Sign-weighted mean of</th></tr>' +
+    M.behavior.filter(b => b.recipe).map(b =>
+      `<tr><td class="k">${b.label}</td><td>${b.recipe}</td></tr>`).join("");
+  $("#whatRaw").textContent = M.behavior.filter(b => !RAW[b.key]).map(b => b.label).join(" · ");
+  $("#whatComps").innerHTML = '<tr><th>Component</th><th>Strongest loadings</th><th>Lesion var.</th></tr>' +
+    (M.components || []).map(c =>
+      `<tr class="${c.id === "C1" ? "hi" : ""}"><td class="k">${c.id} ${c.reads_as}</td>` +
+      `<td>${c.loadings}</td><td class="n">${c.lesion_var.toFixed(3)}</td></tr>`).join("");
+  $("#whatBtn").onclick = () => $("#what").classList.add("on");
+  $("#whatClose").onclick = () => $("#what").classList.remove("on");
+  $("#what").onclick = e => { if (e.target.id === "what") $("#what").classList.remove("on"); };
+  addEventListener("keydown", e => { if (e.key === "Escape") $("#what").classList.remove("on"); });
+
   BWV.ready.then(() => {
     const cs = document.getElementById("cmapSel");
     BW.CMAPS.forEach(c => { const o = document.createElement("option");
