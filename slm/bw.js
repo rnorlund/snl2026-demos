@@ -87,7 +87,7 @@ const BW = (() => {
       for (const k in shade) set(k, shade[k]);
       return true;
     }
-    let tuned = false;
+    let tuned = false, rafId = 0, pending = null, styled = false, lastTune = 0;
     const retune = () => { if (!tuned) tuned = tune(); else tune(); };
 
     /* Overlay style. brainWhiz creates the overlay on the first
@@ -120,10 +120,22 @@ const BW = (() => {
 
     const api = {
       ready, cmaps: CMAPS, frame: f,
+      /* Dragging a slider fires input continuously. Pushing every event put a
+         postMessage plus a restyle plus a full retune (eight DOM writes into
+         the iframe) on each one, which is what made the demos feel laggy.
+         Coalesce to one push per animation frame, and re-assert the viewer
+         settings at most every couple of seconds rather than every push. */
       setValues(values, name) {
-        post({ cmd: "setRegionValues", values, name: name || "prediction" });
-        setTimeout(restyle, 150);          // the overlay exists now; style it
-        setTimeout(retune, 250);           // re-assert if a redraw reset it
+        pending = { values, name: name || "prediction" };
+        if (rafId) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          const p = pending; pending = null;
+          post({ cmd: "setRegionValues", values: p.values, name: p.name });
+          if (!styled) { styled = true; setTimeout(restyle, 150); }
+          const now = Date.now();
+          if (now - lastTune > 2000) { lastTune = now; setTimeout(retune, 250); }
+        });
       },
       setColormap(cmap) { style.cmap = cmap; restyle(); },
       setRange(cmin, cmax) { style.cmin = cmin; style.cmax = cmax; restyle(); },
