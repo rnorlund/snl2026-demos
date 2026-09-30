@@ -108,6 +108,12 @@
   .build { display: inline-block; background: #2a2d34; color: #8ad; border: 1px solid #3a3f48;
     border-radius: 5px; padding: 2px 7px; font-size: 11px; font-weight: 600;
     vertical-align: middle; font-family: monospace; }
+  #reality { display: none; position: absolute; left: 10px; bottom: 8px; z-index: 5;
+    font-size: 11px; color: #9a9a9a; background: rgba(24,24,27,.86);
+    border: 1px solid #33363c; border-radius: 6px; padding: 5px 10px;
+    font-variant-numeric: tabular-nums; max-width: 62%; line-height: 1.5; }
+  #reality b { color: #ccd; }
+  #reality .warn { color: #e9a; }
   .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
   .control-row label { width: 110px; font-size: 12px; color: #ccc; }
   .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
@@ -157,7 +163,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span class="build">build 25</span></h1>
+    <h1>Real-time symptom→lesion mapping <span class="build">build 26</span></h1>
     <div class="mast">
       <div><span class="pid">B1</span><span class="when">SNL 2026 · Geneva · Wed 16:30–18:30 · Wangari Maathai &amp; Lise Girardin</span></div>
       <p class="auth"><b style="color:#bbb">The behavioral test you pick decides the brain anatomy you can see</b><br>
@@ -194,7 +200,13 @@
           <tr><td>WAB error types</td><td>+0.09</td></tr>
           <tr><td>PNT error types</td><td>+0.18</td></tr>
         </table>
-        <p><b>Limits worth knowing.</b> Per-region R² runs 0.06–0.30: this is a group-level
+        <p><b>It over-draws the healthy end.</b> Max every subscore and the model puts 15
+          regions above 10% damage. The 59 C-STAR patients above AQ 90 average 7.6, and the
+          25 highest average a median of 3 — seven of them have no region above 10% at all.
+          A linear model with this much residual variance shrinks toward the cohort mean, so a
+          perfect profile is drawn as far more lesion than a real high scorer carries. The
+          readout at bottom-left compares the two live.</p>
+        <p style="margin-top:7px"><b>Limits worth knowing.</b> Per-region R² runs 0.06–0.30: this is a group-level
           conditional mean, not a diagnostic for one person. Every patient in C-STAR has had a
           stroke, so the model has never seen a healthy brain and shrinks toward the cohort floor
           rather than to zero — superior longitudinal fasciculus and posterior insula are damaged
@@ -352,11 +364,12 @@
       <div id="bw" style="width:100%;height:100%"></div>
       <div id="empty-note"></div>
       <div id="shown-count"></div>
+      <div id="reality"></div>
     </div>
   </div>
 </div>
 
-<script src="bw.js?v=25"></script>
+<script src="bw.js?v=26"></script>
 <script>
 let model = null;
 let nv = null;
@@ -401,6 +414,33 @@ function setPolarity(p) {
 }
 
 // Each mode points at one trained model and the feature group whose sliders drive it.
+/* What C-STAR patients at each WAB AQ actually look like on MRI: mean number of
+   left-hemisphere regions more than 10% damaged. Aggregate counts only, no rows.
+   Used as a reality check beside the model's own prediction, because a linear
+   model with per-region R2 of 0.06-0.30 shrinks toward the cohort mean and so
+   over-draws the healthy end -- at AQ 100 it says 15 regions, the 59 patients
+   above AQ 90 average 7.6, and the top 25 have a median of 3. */
+const COHORT_EXTENT = [
+  [10, 20, 15, 29.8], [20, 30, 33, 33.0], [30, 40, 25, 28.1], [40, 50, 28, 25.5],
+  [50, 60, 23, 20.7], [60, 70, 29, 20.7], [70, 80, 31, 18.3], [80, 90, 42, 13.5],
+  [90, 101, 59, 7.6],
+];
+// WAB-R AQ = 2 x (information content + fluency + comprehension + repetition + naming),
+// each already on the 0-10 scale the sliders use. Cohort medians give 66.8 against an
+// observed median AQ of 66.7, so this reproduces the published score.
+const AQ_FEATURES = ['WABInformation Content', 'WABFluency Rating',
+  'WABComprehension Subscore', 'WABRepetition Subscore', 'WABNaming subscore'];
+
+function currentAQ() {
+  let sum = 0;
+  for (const f of AQ_FEATURES) {
+    const el = slidersByFeature[f];
+    if (!el) return null;
+    sum += parseFloat(el.value) || 0;
+  }
+  return Math.max(0, Math.min(100, 2 * sum));
+}
+
 const MODE_DESC = {
   wab_subs:   { name: 'WAB subscores → lesion',                              modelKey: 'M_wab_subs',   featGroup: 'wab_subs' },
   wab_errs:   { name: 'WAB errors → lesion',                                 modelKey: 'M_wab_errs',   featGroup: 'wab_errs' },
@@ -410,7 +450,7 @@ const MODE_DESC = {
 
 async function init() {
   setStatus('Loading model.json…');
-  const resp = await fetch('model.json?v=25');
+  const resp = await fetch('model.json?v=26');
   model = await resp.json();
   buildSliders();
   buildPresets();
@@ -948,6 +988,28 @@ function updateLesion(autoSwitch) {
   }
   const cov = document.getElementById('shown-count');
   if (cov) cov.textContent = `${shown} of ${total} regions above ${(cut * 100).toFixed(0)}%`;
+
+  /* Reality check. Only in the subscore lens, where AQ is defined by the very
+     sliders driving the map. Counts regions the model puts above 10% regardless
+     of the display threshold, so it compares like with like. */
+  const rc = document.getElementById('reality');
+  if (rc) {
+    const aq = mode === 'wab_subs' ? currentAQ() : null;
+    const band = aq == null ? null : COHORT_EXTENT.find(b => aq >= b[0] && aq < b[1]);
+    if (!band) { rc.style.display = 'none'; }
+    else {
+      let pred = 0;
+      for (const ri of M.rois) if (Math.min(1, Math.max(0, loads[ri.roi])) > 0.10) pred++;
+      const [lo, hi, n, obs] = band;
+      const ratio = obs > 0 ? pred / obs : Infinity;
+      rc.innerHTML =
+        `<b>WAB AQ ${aq.toFixed(0)}</b> &nbsp;·&nbsp; model predicts <b>${pred}</b> regions &gt;10% damaged` +
+        ` &nbsp;·&nbsp; the <b>${n}</b> C-STAR patients at AQ ${lo}\u2013${hi > 100 ? 100 : hi}` +
+        ` average <b>${obs.toFixed(1)}</b>` +
+        (ratio >= 1.5 ? ` &nbsp;<span class="warn">model draws ${ratio.toFixed(1)}\u00d7 too much here</span>` : '');
+      rc.style.display = 'block';
+    }
+  }
 
   // Update legend bar gradient to match active colormap
   const legendBar = document.getElementById('legend-bar');
