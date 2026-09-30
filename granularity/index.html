@@ -100,7 +100,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v16</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v17</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -121,6 +121,21 @@
       <label>Colormap</label>
       <select id="colormap"></select>
     </div>
+    <div class="control-row">
+      <label>Show</label>
+      <select id="showmode">
+        <option value="deviation" selected>Behaviour effect (vs cohort average)</option>
+        <option value="total">Total predicted lesion</option>
+      </select>
+    </div>
+    <p class="note" style="margin-top:0;font-size:11px">
+      Every region carries an intercept — the cohort-average lesion proportion there — and
+      <strong>63 of 70 clear the display threshold on that alone</strong>. So "total predicted lesion"
+      lights the whole brain before any slider is touched: you are looking at the average stroke.
+      <strong>Behaviour effect</strong> subtracts that baseline, so the map is blank at the cohort
+      median and shows only what <em>this</em> profile adds. That is the view that answers which
+      anatomy a given lens can actually reach.
+    </p>
     <div class="control-row">
       <label>Colour scale</label>
       <select id="scalemode">
@@ -415,6 +430,7 @@ function buildControls() {
     colormapByPolarity[polarity] = e.target.value;
     updateLesion();
   });
+  document.getElementById('showmode').addEventListener('change', updateLesion);
   document.getElementById('scalemode').addEventListener('change', updateLesion);
   document.getElementById('rangemode').addEventListener('change', applyRangeMode);
   const amp = document.getElementById('amp');
@@ -602,11 +618,16 @@ function updateLesion() {
   // far-out slider combinations (six error proportions all at their individual
   // maxima, which no patient can satisfy at once) can still predict past 100%
   // even with the sliders clamped. Cap it rather than paint an impossible map.
+  const deviation = document.getElementById('showmode').value === 'deviation';
+  /* 'total' shows the prediction itself, which is dominated by the intercept.
+     'deviation' subtracts it, so Damaged means "more lesion here than the
+     average patient" and Spared "less" -- proper mirror images, and zero
+     everywhere at the cohort median. */
   function display(roiId) {
-    const v = loads[roiId];
+    const v = loads[roiId], base = baseline[roiId] || 0;
     const raw = polarity === 'damaged'
-      ? Math.max(0, v)
-      : Math.max(0, (baseline[roiId] || 0) - v);
+      ? Math.max(0, deviation ? v - base : v)
+      : Math.max(0, base - v);
     return Math.min(1, raw);
   }
 
@@ -654,7 +675,9 @@ function updateLesion() {
     pnt_errs:   'Predicted lesion, PNT errors (175-item)',
     pnt_unique: 'Predicted lesion, PNT errors after WAB-subs partialed',
   };
-  const polarityTag = polarity === 'damaged' ? ' (damaged)' : ' (spared)';
+  const polarityTag = deviation
+    ? (polarity === 'damaged' ? ' — above cohort average' : ' — below cohort average')
+    : (polarity === 'damaged' ? ' (damaged)' : ' (spared)');
   document.getElementById('legend-title').textContent =
     titles[mode] + polarityTag + (absolute ? ` — peak ${(maxPos * 100).toFixed(1)}%` : ' — stretched');
   if (absolute) {
