@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>Real-time symptom-lesion mapping, C-STAR demo</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -102,6 +105,9 @@
     border-radius: 5px; white-space: nowrap; }
   #reading.bad  { background: #3a1416; color: #f9a; border: 1px solid #5a2024; }
   #reading.good { background: #0f2a30; color: #7dd; border: 1px solid #1d4650; }
+  .build { display: inline-block; background: #2a2d34; color: #8ad; border: 1px solid #3a3f48;
+    border-radius: 5px; padding: 2px 7px; font-size: 11px; font-weight: 600;
+    vertical-align: middle; font-family: monospace; }
   .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
   .control-row label { width: 110px; font-size: 12px; color: #ccc; }
   .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
@@ -151,7 +157,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v25</span></h1>
+    <h1>Real-time symptom→lesion mapping <span class="build">build 25</span></h1>
     <div class="mast">
       <div><span class="pid">B1</span><span class="when">SNL 2026 · Geneva · Wed 16:30–18:30 · Wangari Maathai &amp; Lise Girardin</span></div>
       <p class="auth"><b style="color:#bbb">The behavioral test you pick decides the brain anatomy you can see</b><br>
@@ -350,7 +356,7 @@
   </div>
 </div>
 
-<script src="bw.js"></script>
+<script src="bw.js?v=25"></script>
 <script>
 let model = null;
 let nv = null;
@@ -404,7 +410,7 @@ const MODE_DESC = {
 
 async function init() {
   setStatus('Loading model.json…');
-  const resp = await fetch('model.json');
+  const resp = await fetch('model.json?v=25');
   model = await resp.json();
   buildSliders();
   buildPresets();
