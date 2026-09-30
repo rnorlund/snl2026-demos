@@ -57,6 +57,47 @@
     padding: 9px 13px; color: #9aa; font-size: 11.5px; line-height: 1.45; text-align: center; }
   #shown-count { position: absolute; right: 10px; bottom: 8px; z-index: 5;
     font-size: 11px; color: #888; font-family: monospace; pointer-events: none; }
+  .mast { border-bottom: 1px solid #333; padding-bottom: 11px; margin-bottom: 13px; }
+  .mast .pid { display: inline-block; background: #73000A; color: #fff; font-weight: 700;
+    font-size: 10.5px; letter-spacing: .09em; padding: 3px 7px; border-radius: 4px;
+    vertical-align: middle; margin-right: 7px; }
+  .mast .when { font-size: 11px; color: #888; }
+  .mast .auth { font-size: 11px; color: #999; margin: 6px 0 0; line-height: 1.5; }
+  .mast a { color: #7bf; text-decoration: none; }
+  .mast a:hover { text-decoration: underline; }
+  .tour { background: #17181c; border: 1px solid #2c2f36; border-radius: 9px;
+    padding: 12px 13px; margin: 0 0 14px; }
+  .tour h3 { margin: 0 0 3px; font-size: 12.5px; color: #cdd; letter-spacing: .02em; }
+  .tour .lede { font-size: 11px; color: #888; margin: 0 0 9px; line-height: 1.45; }
+  .tour-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tour-row button { flex: 1 1 auto; min-width: 62px; background: #23262d; color: #cde;
+    border: 1px solid #343842; border-radius: 6px; padding: 6px 7px; font-size: 11px;
+    cursor: pointer; line-height: 1.3; }
+  .tour-row button:hover { border-color: #6cf; color: #fff; }
+  .tour-row button.on { background: #6cf; color: #05202c; border-color: #6cf; font-weight: 600; }
+  #tour-say { font-size: 11.5px; color: #9db; margin: 9px 0 0; line-height: 1.5;
+    min-height: 2.6em; }
+  #tour-say b { color: #cfe; }
+  details.scope { background: #17181c; border: 1px solid #2c2f36; border-radius: 9px;
+    margin: 0 0 14px; }
+  details.scope > summary { cursor: pointer; padding: 10px 13px; font-size: 12px;
+    color: #cdd; list-style: none; }
+  details.scope > summary::-webkit-details-marker { display: none; }
+  details.scope > summary::before { content: "▸ "; color: #777; }
+  details.scope[open] > summary::before { content: "▾ "; }
+  details.scope .body { padding: 0 13px 12px; font-size: 11.5px; color: #9a9a9a;
+    line-height: 1.55; }
+  details.scope .body b { color: #ccc; }
+  details.scope table { width: 100%; border-collapse: collapse; margin: 7px 0; font-size: 11px; }
+  details.scope th { text-align: left; color: #777; font-weight: 600; padding: 3px 6px 3px 0;
+    border-bottom: 1px solid #2c2f36; }
+  details.scope td { padding: 3px 6px 3px 0; border-bottom: 1px solid #232528;
+    font-variant-numeric: tabular-nums; }
+  .sidefoot { border-top: 1px solid #333; margin-top: 16px; padding-top: 12px;
+    font-size: 11px; color: #777; line-height: 1.6; }
+  .sidefoot a { color: #7bf; text-decoration: none; }
+  .sidefoot a:hover { text-decoration: underline; }
+  .sidefoot .links { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
   .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
   .control-row label { width: 110px; font-size: 12px; color: #ccc; }
   .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
@@ -106,7 +147,52 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v23</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v24</span></h1>
+    <div class="mast">
+      <div><span class="pid">B1</span><span class="when">SNL 2026 · Geneva · Wed 16:30–18:30 · Wangari Maathai &amp; Lise Girardin</span></div>
+      <p class="auth"><b style="color:#bbb">The behavioral test you pick decides the brain anatomy you can see</b><br>
+        Newman-Norlund, Ahmadi, Warren, Salman, Yang, Willis, Guan, Bonilha &amp; Fridriksson ·
+        University of South Carolina<br>
+        <a href="poster_B1.pdf">Poster PDF</a> ·
+        <a href="../">All four demos</a> ·
+        <a href="mailto:rnorlund@mailbox.sc.edu">rnorlund@mailbox.sc.edu</a></p>
+    </div>
+
+    <div class="tour">
+      <h3>Start here</h3>
+      <p class="lede">Nobody told this model about aphasia types. It only ever saw subscores and
+        lesion maps. Click through and watch where it puts the damage.</p>
+      <div class="tour-row" id="tour-row"></div>
+      <p id="tour-say">Pick a step above.</p>
+    </div>
+
+    <details class="scope">
+      <summary>What this demo does and does not show</summary>
+      <div class="body">
+        <p><b>It shows:</b> a lesion map predicted from a behavioral profile, under four different
+          ways of summarising the same patients. Set any profile you like and see the anatomy that
+          implies.</p>
+        <p style="margin-top:7px"><b>It does not show the poster's headline result.</b> The poster
+          asks how alike the <i>anatomical fingerprints</i> of different scores are within one lens,
+          using partial Spearman against five NMF atoms with lesion volume controlled. This demo is
+          per-region linear regression across 70 JHU regions with no such control — a different
+          target and a different statistic. Quantify this demo and you get a different ordering.
+          The poster's numbers are:</p>
+        <table>
+          <tr><th>lens</th><th>mean fingerprint r</th></tr>
+          <tr><td>WAB severity subscores</td><td>+0.50</td></tr>
+          <tr><td>WAB error types</td><td>+0.09</td></tr>
+          <tr><td>PNT error types</td><td>+0.18</td></tr>
+        </table>
+        <p><b>Limits worth knowing.</b> Per-region R² runs 0.06–0.30: this is a group-level
+          conditional mean, not a diagnostic for one person. Every patient in C-STAR has had a
+          stroke, so the model has never seen a healthy brain and shrinks toward the cohort floor
+          rather than to zero — superior longitudinal fasciculus and posterior insula are damaged
+          in almost everyone and top every map. Demographics are covariates fit on this cohort,
+          not causes.</p>
+      </div>
+    </details>
+
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -222,6 +308,18 @@
       title="Sliders back to the cohort median, covariates off, and the view controls back to their defaults. Lens and colormap are left as you set them.">Reset to cohort median</button>
 
     <div id="status">Loading model and atlas…</div>
+
+    <div class="sidefoot">
+      <div class="links">
+        <a href="../slm/">Poster 1 · lesion from behavior</a>
+        <a href="../virtuouscycle/">Poster 3 · both directions</a>
+        <a href="../soop/">Poster 4 · severity from notes</a>
+      </div>
+      Questions or data requests: <a href="mailto:rnorlund@mailbox.sc.edu">rnorlund@mailbox.sc.edu</a><br>
+      Roger D. Newman-Norlund · <a href="https://newmannorlund.com">newmannorlund.com</a> ·
+      brains by <a href="https://rnorlund.github.io/brainWhiz/">brainWhiz</a><br>
+      Runs entirely in your browser: model coefficients only, no patient records.
+    </div>
   </div>
 
   <div id="viewer">
@@ -304,6 +402,7 @@ async function init() {
   model = await resp.json();
   buildSliders();
   buildPresets();
+  buildTour();
   buildControls();
 
   setStatus('Loading brainWhiz…');
@@ -498,6 +597,45 @@ function applyRangeMode() {
   updateLesion();
 }
 
+/* A four-step walkthrough. Everything it does is reachable by hand; the point
+   is that an unattended visitor will not find it among two dozen controls. */
+const TOUR = [
+  { label: '1 · Broca', preset: 'Broca', lens: 'wab_subs', show: 'total',
+    say: 'Peaks on <b>IFG pars opercularis 61%</b> and <b>insula 59%</b> — Broca\u2019s area and the anterior peri-Sylvian. The model was never told this profile is called Broca\u2019s aphasia.' },
+  { label: '2 · Wernicke', preset: 'Wernicke', lens: 'wab_subs', show: 'total',
+    say: 'Now the peak moves back: <b>posterior STG 66%</b>, <b>STG 59%</b>, <b>posterior MTG 55%</b>. Same model, same five sliders — only the profile changed.' },
+  { label: '3 · Global', preset: 'Global', lens: 'wab_subs', show: 'total',
+    say: 'Everything, peaking at <b>90%</b> in posterior insula. 45 of 70 regions above 10%, against 22 for mild anomic.' },
+  { label: '4 · Subtract the average', preset: 'Wernicke', lens: 'wab_subs', show: 'deviation',
+    say: 'SLF and posterior insula top every map because nearly everyone in C-STAR has them damaged. Subtract each region\u2019s cohort average and Wernicke\u2019s <b>temporal</b> peak stands alone — that is the profile speaking, not the common stroke.' },
+];
+
+function runTour(i) {
+  const t = TOUR[i];
+  document.getElementById('viewmode').value = t.lens;
+  document.getElementById('showmode').value = t.show;
+  const thr = document.getElementById('thresh');
+  thr.value = t.show === 'deviation' ? '0.02' : '0.10';
+  document.getElementById('thresh-val').textContent =
+    (parseFloat(thr.value) * 100).toFixed(0) + '%';
+  updateDimming();
+  applyPreset(PRESETS[t.preset]);
+  document.getElementById('tour-say').innerHTML = t.say;
+  [...document.querySelectorAll('#tour-row button')]
+    .forEach((b, j) => b.classList.toggle('on', j === i));
+  updateLesion();
+}
+
+function buildTour() {
+  const row = document.getElementById('tour-row');
+  TOUR.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.textContent = t.label;
+    b.onclick = () => runTour(i);
+    row.appendChild(b);
+  });
+}
+
 function updateDimming() {
   const mode = document.getElementById('viewmode').value;
   const desc = MODE_DESC[mode];
@@ -516,9 +654,11 @@ function formatVal(v, units) {
   return v.toFixed(0);                          // counts, years, levels show as integer
 }
 
+let PRESETS = null;
+
 function buildPresets() {
   // Presets use the new feature-name schema. Error proportions sum to ≤ 1.0.
-  const presets = {
+  const presets = PRESETS = {
     'Mild anomic': {
       'WABInformation Content': 9, 'WABFluency Rating': 9,
       'WABComprehension Subscore': 9.5, 'WABRepetition Subscore': 9.5,
@@ -632,6 +772,8 @@ function resetToMedian() {
   }
 
   if (polarity !== 'damaged') setPolarity('damaged');
+  [...document.querySelectorAll('#tour-row button')].forEach(b => b.classList.remove('on'));
+  document.getElementById('tour-say').innerHTML = 'Pick a step above.';
   updateDimming();
   updateLesion();
 }
