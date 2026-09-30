@@ -106,7 +106,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v19</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v20</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -130,17 +130,18 @@
     <div class="control-row">
       <label>Show</label>
       <select id="showmode">
-        <option value="deviation" selected>Behaviour effect (vs cohort average)</option>
-        <option value="total">Total predicted lesion</option>
+        <option value="total" selected>Total predicted lesion</option>
+        <option value="deviation">Behaviour effect (vs cohort average)</option>
       </select>
     </div>
     <p class="note" style="margin-top:0;font-size:11px">
-      Every region carries an intercept — the cohort-average lesion proportion there — and
-      <strong>63 of 70 clear the display threshold on that alone</strong>. So "total predicted lesion"
-      lights the whole brain before any slider is touched: you are looking at the average stroke.
-      <strong>Behaviour effect</strong> subtracts that baseline, so the map is blank at the cohort
-      median and shows only what <em>this</em> profile adds. That is the view that answers which
-      anatomy a given lens can actually reach.
+      <strong>Total predicted lesion</strong> is this profile's predicted lesion map. Use it for
+      the presets: Broca peaks on IFG pars opercularis and insula, Wernicke on posterior STG and
+      MTG, Global everywhere.
+      <br><strong>Behaviour effect</strong> subtracts each region's intercept, showing only the
+      departure from the cohort average. It isolates what the lens contributes, but note that it
+      goes blank for anyone near or better than average — Mild anomic sits above average in
+      <em>no</em> region, and Conduction in none either way. For those, read it on the Spared tab.
     </p>
     <div class="control-row">
       <label>Colour scale</label>
