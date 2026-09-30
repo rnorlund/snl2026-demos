@@ -106,7 +106,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v20</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v21</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -218,7 +218,8 @@
     <h2>Patient presets</h2>
     <div class="preset-row" id="presets"></div>
 
-    <button class="reset" onclick="resetToMedian()">Reset to cohort median</button>
+    <button class="reset" onclick="resetToMedian()"
+      title="Sliders back to the cohort median, covariates off, and the view controls back to their defaults. Lens and colormap are left as you set them.">Reset to cohort median</button>
 
     <div id="status">Loading model and atlas…</div>
   </div>
@@ -253,6 +254,7 @@ let nv = null;
 let polarity = 'damaged';   // 'damaged' (positive predictions) | 'spared' (negative predictions)
 const slidersByFeature = {};
 const valByFeature = {};    // the typed number input beside each slider
+const cbByFeature = {};     // the enable checkbox beside each demographic covariate
 const demoEnabled = {};     // per-demographic toggle: false → set z=0 (don't control for it)
 
 // Approximate CSS gradients matching NiiVue's named colormaps.
@@ -424,6 +426,7 @@ function buildSliders() {
       cb.checked = false;
       cb.title = 'Enable to control for this variable';
       demoEnabled[info.name] = false;
+      cbByFeature[info.name] = cb;
       cb.addEventListener('change', () => {
         demoEnabled[info.name] = cb.checked;
         wrap.classList.toggle('active', cb.checked);
@@ -592,12 +595,37 @@ function applyPreset(values) {
   }
 }
 
+/* Put the whole page back to how it loads, not just the sliders. Resetting
+   sliders alone could leave you on Behaviour effect, where the cohort median
+   is by definition zero everywhere and the map is empty -- a reset should
+   never land on a blank brain. The lens and the colormap are deliberate
+   choices, so those stay. */
 function resetToMedian() {
+  const DEFAULTS = { showmode: 'total', scalemode: 'absolute', rangemode: 'observed',
+                     thresh: '0.10', amp: '0.55' };
+  for (const id in DEFAULTS) {
+    const el = document.getElementById(id);
+    if (el) el.value = DEFAULTS[id];
+  }
+  document.getElementById('thresh-val').textContent = '10%';
+  document.getElementById('amp-val').textContent = '0.55';
+
+  for (const name in cbByFeature) {
+    const cb = cbByFeature[name];
+    if (!cb.checked) continue;
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));      // clears demoEnabled and disables the slider
+  }
+
+  applyRangeMode();                             // widths first, so values below land in range
   for (const info of model.slider_info) {
     slidersByFeature[info.name].value = sliderPosFromUnderlying(info, info.p50);
     slidersByFeature[info.name].dispatchEvent(new Event('input'));
   }
+
+  if (polarity !== 'damaged') setPolarity('damaged');
   updateDimming();
+  updateLesion();
 }
 
 // Each model M carries its own feature list, mu (means), sd (stds).
