@@ -51,6 +51,12 @@
   .reset { margin-top: 14px; padding: 8px 14px; background: #6cf; color: #111;
            border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }
   .reset:hover { background: #8df; }
+  #empty-note { display: none; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%); max-width: 380px; z-index: 5;
+    background: rgba(20,20,22,.92); border: 1px solid #553; border-radius: 8px;
+    padding: 14px 16px; color: #fd8; font-size: 12.5px; line-height: 1.5; text-align: center; }
+  #shown-count { position: absolute; right: 10px; bottom: 8px; z-index: 5;
+    font-size: 11px; color: #888; font-family: monospace; pointer-events: none; }
   .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
   .control-row label { width: 110px; font-size: 12px; color: #ccc; }
   .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
@@ -100,7 +106,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v17</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v18</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -222,6 +228,8 @@
     </div>
     <div id="gl-container">
       <div id="bw" style="width:100%;height:100%"></div>
+      <div id="empty-note"></div>
+      <div id="shown-count"></div>
     </div>
   </div>
 </div>
@@ -619,16 +627,18 @@ function updateLesion() {
   // maxima, which no patient can satisfy at once) can still predict past 100%
   // even with the sliders clamped. Cap it rather than paint an impossible map.
   const deviation = document.getElementById('showmode').value === 'deviation';
-  /* 'total' shows the prediction itself, which is dominated by the intercept.
-     'deviation' subtracts it, so Damaged means "more lesion here than the
-     average patient" and Spared "less" -- proper mirror images, and zero
-     everywhere at the cohort median. */
+  /* Each mode needs its own complement or the two tabs stop being opposites.
+       total     damaged = predicted lesion,  spared = predicted intact (1 - lesion)
+       deviation damaged = more than average, spared = less than average
+     Mixing them (raw prediction against baseline-minus-prediction, as this did)
+     makes Spared go blank for any profile more damaged than the cohort mean
+     while Damaged shows a full brain. */
   function display(roiId) {
     const v = loads[roiId], base = baseline[roiId] || 0;
-    const raw = polarity === 'damaged'
-      ? Math.max(0, deviation ? v - base : v)
-      : Math.max(0, base - v);
-    return Math.min(1, raw);
+    const raw = deviation
+      ? (polarity === 'damaged' ? v - base : base - v)
+      : (polarity === 'damaged' ? v : 1 - v);
+    return Math.min(1, Math.max(0, raw));
   }
 
   // Histogram-stretch over the displayed values
@@ -662,6 +672,26 @@ function updateLesion() {
   nv.setColormap(cmap);
   nv.setValues(vals, 'predicted lesion');
 
+  /* A blank brain here is usually a real answer, not a failure: a severe
+     profile predicts more damage than the cohort average everywhere, so
+     nothing is "spared relative to average". Say so rather than show nothing. */
+  const shown = Object.keys(vals).length, total = M.rois.length;
+  const empty = document.getElementById('empty-note');
+  if (empty) {
+    if (shown === 0) {
+      empty.textContent = deviation
+        ? (polarity === 'spared'
+            ? 'No region falls below the cohort average for this profile — it predicts more damage than average everywhere. Switch to Damaged, or pick a milder profile.'
+            : 'No region rises above the cohort average for this profile. Switch to Spared.')
+        : 'Nothing clears the display threshold at these settings.';
+      empty.style.display = 'block';
+    } else {
+      empty.style.display = 'none';
+    }
+  }
+  const cov = document.getElementById('shown-count');
+  if (cov) cov.textContent = `${shown} of ${total} regions shown`;
+
   // Update legend bar gradient to match active colormap
   const legendBar = document.getElementById('legend-bar');
   if (legendBar && COLORMAP_GRADIENTS[cmap]) {
@@ -677,7 +707,7 @@ function updateLesion() {
   };
   const polarityTag = deviation
     ? (polarity === 'damaged' ? ' — above cohort average' : ' — below cohort average')
-    : (polarity === 'damaged' ? ' (damaged)' : ' (spared)');
+    : (polarity === 'damaged' ? ' — predicted lesion' : ' — predicted intact tissue');
   document.getElementById('legend-title').textContent =
     titles[mode] + polarityTag + (absolute ? ` — peak ${(maxPos * 100).toFixed(1)}%` : ' — stretched');
   if (absolute) {
