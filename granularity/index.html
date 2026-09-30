@@ -106,7 +106,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v22</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v23</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -279,7 +279,7 @@ const COLORMAP_GRADIENTS = {
 // When the user manually picks a colormap while a polarity is active, we update that polarity's
 // remembered choice. On polarity switch we restore that polarity's last choice, so the user's
 // selection is preserved across polarity toggles.
-const colormapByPolarity = { damaged: 'viridis', spared: 'cool' };
+const colormapByPolarity = { damaged: 'hot', spared: 'cool' };
 
 function setPolarity(p) {
   polarity = p;
@@ -310,8 +310,8 @@ async function init() {
   // brainWhiz carries its own JHU atlas and draws the three planes plus the
   // 3D render; we only ever hand it per-region numbers.
   nv = BW.mount(document.getElementById('bw'),
-                { cmap: 'viridis', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
-  BW.cmapPicker(document.getElementById('colormap'), nv, 'viridis');
+                { cmap: 'hot', cmin: 0, cmax: 1, thr: 0.02, view: 'left' });
+  BW.cmapPicker(document.getElementById('colormap'), nv, 'hot');
   await nv.ready;
 
 
