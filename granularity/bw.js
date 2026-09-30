@@ -71,6 +71,10 @@ const BW = (() => {
     const set = (id, v) => {
       const d = doc(); if (!d) return false;
       const el = d.getElementById(id); if (!el) return false;
+      // Dispatching input/change makes brainWhiz re-render all four tiles, and
+      // the iframe is same-origin so that blocks the host's slider handling.
+      // Writing a value the control already holds is pure cost: skip it.
+      if (String(el.value) === String(v)) return true;
       el.value = v;
       el.dispatchEvent(new Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
       return true;
@@ -87,8 +91,17 @@ const BW = (() => {
       for (const k in shade) set(k, shade[k]);
       return true;
     }
-    let tuned = false, rafId = 0, pending = null, styled = false, lastTune = 0;
-    const retune = () => { if (!tuned) tuned = tune(); else tune(); };
+    let tuned = false, rafId = 0, pending = null, styled = false, lastTune = 0, lastPush = 0;
+    /* Once tuned, the only setting that drifts is the slice-kind button (a new
+       overlay can knock it back to voxel). Everything else in tune() is already
+       at its target, so reading one className beats re-running the whole thing. */
+    const retune = () => {
+      if (!tuned) { tuned = tune(); return; }
+      const d = doc(); if (!d) return;
+      const btn = d.getElementById("slKindMesh");
+      if (btn && /\bon\b/.test(btn.className)) return;   // still meshed: nothing to do
+      tune();
+    };
 
     /* Overlay style. brainWhiz creates the overlay on the first
        setRegionValues; a colormap posted before that styles nothing and the
@@ -120,25 +133,33 @@ const BW = (() => {
 
     const api = {
       ready, cmaps: CMAPS, frame: f,
-      /* Dragging a slider fires input continuously. Pushing every event put a
-         postMessage plus a restyle plus a full retune (eight DOM writes into
-         the iframe) on each one, which is what made the demos feel laggy.
-         Coalesce to one push per animation frame, and re-assert the viewer
-         settings at most every couple of seconds rather than every push. */
+      /* Dragging a slider fires input ~100x/s. Each push makes brainWhiz
+         repaint all four tiles, and the iframe is same-origin so that runs on
+         the host's own main thread -- pushing every event starved the slider
+         handler itself. Coalesce to the trailing value and leave >=70ms
+         between pushes (~14/s, visually identical during a drag), and
+         re-assert the viewer settings at most every couple of seconds. */
       setValues(values, name) {
         pending = { values, name: name || "prediction" };
         if (rafId) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = 0;
+        const wait = Math.max(0, 70 - (Date.now() - lastPush));
+        const schedule = cb => wait ? setTimeout(cb, wait) : requestAnimationFrame(cb);
+        rafId = 1;
+        schedule(() => {
+          rafId = 0; lastPush = Date.now();
           const p = pending; pending = null;
+          if (!p) return;
           post({ cmd: "setRegionValues", values: p.values, name: p.name });
           if (!styled) { styled = true; setTimeout(restyle, 150); }
           const now = Date.now();
           if (now - lastTune > 2000) { lastTune = now; setTimeout(retune, 250); }
         });
       },
-      setColormap(cmap) { style.cmap = cmap; restyle(); },
-      setRange(cmin, cmax) { style.cmin = cmin; style.cmax = cmax; restyle(); },
+      setColormap(cmap) { if (cmap === style.cmap) return; style.cmap = cmap; restyle(); },
+      setRange(cmin, cmax) {
+        if (cmin === style.cmin && cmax === style.cmax) return;
+        style.cmin = cmin; style.cmax = cmax; restyle();
+      },
       setThreshold(thr) { style.thr = thr; restyle(); },
       setView(view) { post({ cmd: "setView", view }); },
       setMode(mode) { post({ cmd: "setMode", mode }); setTimeout(retune, 600); },
