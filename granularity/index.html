@@ -106,7 +106,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v18</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v19</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -166,6 +166,17 @@
       These are linear models. Dragging an error proportion to 1.0 — far past anything in C-STAR,
       where Mixed (PNT) tops out at 0.10 — makes them predict lesion loads above 100%. Clamping
       keeps every slider inside its observed range. Predictions are capped at 100% either way.
+    </p>
+    <div class="control-row">
+      <label>Hide below</label>
+      <input type="range" id="thresh" min="0" max="0.40" step="0.01" value="0.10">
+      <span class="val" id="thresh-val">10%</span>
+    </div>
+    <p class="note" style="margin-top:0;font-size:11px">
+      Regions predicted below this stay <strong>grey</strong>. With it at 0 the map never goes
+      dark: a perfect WAB profile still predicts 2–5% in 36 of 70 regions, and γ&lt;1 brightens
+      exactly those weak values. At 10% a perfect profile leaves 15 regions coloured, the cohort
+      median 35, the worst profile 47 — so "better scores, less lesion" becomes visible.
     </p>
     <div class="control-row">
       <label>Saturation γ</label>
@@ -438,6 +449,12 @@ function buildControls() {
     colormapByPolarity[polarity] = e.target.value;
     updateLesion();
   });
+  const thr = document.getElementById('thresh');
+  thr.addEventListener('input', () => {
+    document.getElementById('thresh-val').textContent =
+      (parseFloat(thr.value) * 100).toFixed(0) + '%';
+    updateLesion();
+  });
   document.getElementById('showmode').addEventListener('change', updateLesion);
   document.getElementById('scalemode').addEventListener('change', updateLesion);
   document.getElementById('rangemode').addEventListener('change', applyRangeMode);
@@ -641,11 +658,13 @@ function updateLesion() {
     return Math.min(1, Math.max(0, raw));
   }
 
-  // Histogram-stretch over the displayed values
+  /* Anything under the cut is left out of the value push entirely, so
+     brainWhiz keeps those regions on the plain grey template. */
+  const cut = Math.max(1e-9, parseFloat(document.getElementById('thresh').value) || 0);
   let minPos = Infinity, maxPos = 0;
   for (const ri of M.rois) {
     const v = display(ri.roi);
-    if (v > 1e-9) {
+    if (v >= cut) {
       if (v < minPos) minPos = v;
       if (v > maxPos) maxPos = v;
     }
@@ -665,7 +684,7 @@ function updateLesion() {
   const vals = {};
   for (const ri of M.rois) {
     const raw = display(ri.roi);
-    if (raw <= 1e-9) continue;
+    if (raw < cut) continue;
     const norm = absolute ? raw : (raw - minPos) / range;
     vals[ri.roi] = Math.pow(Math.max(0, Math.min(1, norm)), gamma);
   }
@@ -679,18 +698,19 @@ function updateLesion() {
   const empty = document.getElementById('empty-note');
   if (empty) {
     if (shown === 0) {
+      const pct = (cut * 100).toFixed(0);
       empty.textContent = deviation
         ? (polarity === 'spared'
-            ? 'No region falls below the cohort average for this profile — it predicts more damage than average everywhere. Switch to Damaged, or pick a milder profile.'
-            : 'No region rises above the cohort average for this profile. Switch to Spared.')
-        : 'Nothing clears the display threshold at these settings.';
+            ? `No region falls more than ${pct}% below the cohort average for this profile — it predicts more damage than average nearly everywhere. Switch to Damaged, or lower "Hide below".`
+            : `No region rises more than ${pct}% above the cohort average. Switch to Spared, or lower "Hide below".`)
+        : `No region is predicted above ${pct}% — on this lens the profile implies little or no lesion. Lower "Hide below" to see what is there.`;
       empty.style.display = 'block';
     } else {
       empty.style.display = 'none';
     }
   }
   const cov = document.getElementById('shown-count');
-  if (cov) cov.textContent = `${shown} of ${total} regions shown`;
+  if (cov) cov.textContent = `${shown} of ${total} regions above ${(cut * 100).toFixed(0)}%`;
 
   // Update legend bar gradient to match active colormap
   const legendBar = document.getElementById('legend-bar');
