@@ -100,7 +100,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v15</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v16</span></h1>
     <p class="note">
       Switch <strong>view mode</strong> below to see the WAB vs PNT contrast.
       In <em>"PNT unique"</em> mode, only PNT sliders move the map, WAB sliders have no effect.
@@ -121,6 +121,31 @@
       <label>Colormap</label>
       <select id="colormap"></select>
     </div>
+    <div class="control-row">
+      <label>Colour scale</label>
+      <select id="scalemode">
+        <option value="absolute" selected>Absolute 0–100% (shows magnitude)</option>
+        <option value="stretch">Stretch to current range (shows pattern)</option>
+      </select>
+    </div>
+    <p class="note" style="margin-top:0;font-size:11px">
+      <strong>Absolute</strong> fixes the scale at 0–100% lesion proportion, so moving a slider
+      changes how much colour there is. <strong>Stretch</strong> re-normalises to whatever is on
+      screen, so the map always spans the full colormap and only the <em>relative</em> pattern
+      shows — useful for comparing shapes, misleading about magnitude.
+    </p>
+    <div class="control-row">
+      <label>Slider range</label>
+      <select id="rangemode">
+        <option value="observed" selected>Clamp to observed data</option>
+        <option value="full">Allow extrapolation</option>
+      </select>
+    </div>
+    <p class="note" style="margin-top:0;font-size:11px">
+      These are linear models. Dragging an error proportion to 1.0 — far past anything in C-STAR,
+      where Mixed (PNT) tops out at 0.10 — makes them predict lesion loads above 100%. Clamping
+      keeps every slider inside its observed range. Predictions are capped at 100% either way.
+    </p>
     <div class="control-row">
       <label>Saturation γ</label>
       <input type="range" id="amp" min="0.20" max="6.0" step="0.05" value="0.55">
@@ -192,6 +217,7 @@ let model = null;
 let nv = null;
 let polarity = 'damaged';   // 'damaged' (positive predictions) | 'spared' (negative predictions)
 const slidersByFeature = {};
+const valByFeature = {};    // the typed number input beside each slider
 const demoEnabled = {};     // per-demographic toggle: false → set z=0 (don't control for it)
 
 // Approximate CSS gradients matching NiiVue's named colormaps.
@@ -305,7 +331,8 @@ function buildSliders() {
     lbl.innerHTML = info.pretty + (DIRECTION_TAG[info.group] ? `<span class="dir">${DIRECTION_TAG[info.group]}</span>` : '');
     const slider = document.createElement('input');
     slider.type = 'range';
-    slider.min = info.min; slider.max = info.max;
+    // Default to the observed range; rangemode='full' widens these back out.
+    slider.min = info.obs_min; slider.max = info.obs_max;
     // Use 0.01 floor so error-proportion sliders (0-1 range) move in 1% increments;
     // larger ranges still get reasonable steps via the /200 divisor.
     slider.step = Math.max(0.01, (info.max - info.min) / 200);
@@ -314,13 +341,13 @@ function buildSliders() {
     const val = document.createElement('input');
     val.type = 'number';
     val.className = 'val';
-    val.min = info.min;
-    val.max = info.max;
+    val.min = info.obs_min;
+    val.max = info.obs_max;
     val.step = slider.step;
     val.value = formatVal(parseFloat(slider.value), info.units);
     val.addEventListener('input', () => {
       const v = parseFloat(val.value);
-      if (!isNaN(v) && v >= info.min && v <= info.max) {
+      if (!isNaN(v) && v >= parseFloat(slider.min) && v <= parseFloat(slider.max)) {
         slider.value = v;
         slider.dispatchEvent(new Event('input'));
       }
@@ -335,6 +362,7 @@ function buildSliders() {
     }
 
     slidersByFeature[info.name] = slider;
+    valByFeature[info.name] = val;
     slider.addEventListener('input', () => {
       const sliderVal = parseFloat(slider.value);
       // Don't overwrite while user is typing, only sync if focus isn't on the input
@@ -387,11 +415,34 @@ function buildControls() {
     colormapByPolarity[polarity] = e.target.value;
     updateLesion();
   });
+  document.getElementById('scalemode').addEventListener('change', updateLesion);
+  document.getElementById('rangemode').addEventListener('change', applyRangeMode);
   const amp = document.getElementById('amp');
   amp.addEventListener('input', () => {
     document.getElementById('amp-val').textContent = parseFloat(amp.value).toFixed(2);
     updateLesion();
   });
+}
+
+/* Widen or narrow every slider to the observed range vs its full range, and
+   pull any value now out of bounds back inside so the model is never asked to
+   extrapolate silently. */
+function applyRangeMode() {
+  const full = document.getElementById('rangemode').value === 'full';
+  for (const info of model.slider_info) {
+    const slider = slidersByFeature[info.name], val = valByFeature[info.name];
+    if (!slider) continue;
+    const lo = full ? info.min : info.obs_min, hi = full ? info.max : info.obs_max;
+    slider.min = lo; slider.max = hi;
+    if (val) { val.min = lo; val.max = hi; }
+    const v = parseFloat(slider.value);
+    if (v < lo || v > hi) {
+      slider.value = Math.min(hi, Math.max(lo, v));
+      if (val) val.value = formatVal(parseFloat(slider.value), info.units);
+    }
+  }
+  updateErrorTotals();
+  updateLesion();
 }
 
 function updateDimming() {
@@ -547,11 +598,16 @@ function updateLesion() {
   const baseline = {};
   for (const ri of M.rois) baseline[ri.roi] = ri.intercept;
 
+  // A lesion proportion above 1.0 is not a thing. The models are linear, so
+  // far-out slider combinations (six error proportions all at their individual
+  // maxima, which no patient can satisfy at once) can still predict past 100%
+  // even with the sliders clamped. Cap it rather than paint an impossible map.
   function display(roiId) {
     const v = loads[roiId];
-    return polarity === 'damaged'
+    const raw = polarity === 'damaged'
       ? Math.max(0, v)
       : Math.max(0, (baseline[roiId] || 0) - v);
+    return Math.min(1, raw);
   }
 
   // Histogram-stretch over the displayed values
@@ -568,14 +624,19 @@ function updateLesion() {
 
   const range = Math.max(maxPos - minPos, 1e-9);
   const gamma = amp; // amp slider repurposed as gamma; default 0.55 brightens weak values
+  const absolute = document.getElementById('scalemode').value === 'absolute';
 
-  // stretch across the range actually present, then gamma, so the colour
-  // scale reads the same whichever lens and polarity are showing
+  /* Two ways to map a predicted proportion onto the colormap:
+     'absolute' sends it through as-is on a fixed 0-1 scale, so raising a
+     slider visibly adds colour; 'stretch' re-normalises to the min and max
+     currently on screen, which makes the pattern legible but hides magnitude
+     entirely -- the map spans the whole colormap no matter what the values are. */
   const vals = {};
   for (const ri of M.rois) {
     const raw = display(ri.roi);
     if (raw <= 1e-9) continue;
-    vals[ri.roi] = Math.pow(Math.max(0, Math.min(1, (raw - minPos) / range)), gamma);
+    const norm = absolute ? raw : (raw - minPos) / range;
+    vals[ri.roi] = Math.pow(Math.max(0, Math.min(1, norm)), gamma);
   }
   nv.setColormap(cmap);
   nv.setValues(vals, 'predicted lesion');
@@ -594,10 +655,17 @@ function updateLesion() {
     pnt_unique: 'Predicted lesion, PNT errors after WAB-subs partialed',
   };
   const polarityTag = polarity === 'damaged' ? ' (damaged)' : ' (spared)';
-  document.getElementById('legend-title').textContent = titles[mode] + polarityTag;
-  document.getElementById('legend-min').textContent = (minPos * 100).toFixed(1) + '%';
-  document.getElementById('legend-mid').textContent = ((minPos + maxPos) * 50).toFixed(1) + '%';
-  document.getElementById('legend-max').textContent = (maxPos * 100).toFixed(1) + '%';
+  document.getElementById('legend-title').textContent =
+    titles[mode] + polarityTag + (absolute ? ` — peak ${(maxPos * 100).toFixed(1)}%` : ' — stretched');
+  if (absolute) {
+    document.getElementById('legend-min').textContent = '0%';
+    document.getElementById('legend-mid').textContent = '50%';
+    document.getElementById('legend-max').textContent = '100%';
+  } else {
+    document.getElementById('legend-min').textContent = (minPos * 100).toFixed(1) + '%';
+    document.getElementById('legend-mid').textContent = ((minPos + maxPos) * 50).toFixed(1) + '%';
+    document.getElementById('legend-max').textContent = (maxPos * 100).toFixed(1) + '%';
+  }
 }
 
 window.addEventListener('load', () => {
