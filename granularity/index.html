@@ -98,6 +98,10 @@
   .sidefoot a { color: #7bf; text-decoration: none; }
   .sidefoot a:hover { text-decoration: underline; }
   .sidefoot .links { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
+  #reading { font-size: 11px; font-weight: 600; letter-spacing: .02em; padding: 3px 9px;
+    border-radius: 5px; white-space: nowrap; }
+  #reading.bad  { background: #3a1416; color: #f9a; border: 1px solid #5a2024; }
+  #reading.good { background: #0f2a30; color: #7dd; border: 1px solid #1d4650; }
   .control-row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
   .control-row label { width: 110px; font-size: 12px; color: #ccc; }
   .control-row select { flex: 1; padding: 4px 6px; background: #2a2a2a; color: #ddd;
@@ -147,7 +151,7 @@
 <body>
 <div id="container">
   <div id="sidebar">
-    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v24</span></h1>
+    <h1>Real-time symptom→lesion mapping <span style="color:#fa0;font-size:12px">v25</span></h1>
     <div class="mast">
       <div><span class="pid">B1</span><span class="when">SNL 2026 · Geneva · Wed 16:30–18:30 · Wangari Maathai &amp; Lise Girardin</span></div>
       <p class="auth"><b style="color:#bbb">The behavioral test you pick decides the brain anatomy you can see</b><br>
@@ -325,6 +329,7 @@
   <div id="viewer">
     <div id="viewer-header">
       <div id="mode-banner">Mode: …</div>
+      <div id="reading">…</div>
       <div id="polarity-tabs">
         <button id="tab-damaged" class="active" onclick="setPolarity('damaged')">🔴 Damaged</button>
         <button id="tab-spared" onclick="setPolarity('spared')">🔵 Spared</button>
@@ -349,6 +354,7 @@
 <script>
 let model = null;
 let nv = null;
+let autoSwitched = false;   // set when the Show control moved us to the other tab
 let polarity = 'damaged';   // 'damaged' (positive predictions) | 'spared' (negative predictions)
 const slidersByFeature = {};
 const valByFeature = {};    // the typed number input beside each slider
@@ -385,7 +391,7 @@ function setPolarity(p) {
   document.getElementById('tab-spared').classList.toggle('active', p === 'spared');
   const cmapSelect = document.getElementById('colormap');
   cmapSelect.value = colormapByPolarity[p];
-  updateLesion(true);
+  updateLesion();
 }
 
 // Each mode points at one trained model and the feature group whose sliders drive it.
@@ -420,6 +426,21 @@ async function init() {
 
 function setStatus(s) { document.getElementById('status').textContent = s; }
 function setBanner(s) { document.getElementById('mode-banner').textContent = 'Mode: ' + s; }
+
+/* The same coloured hemisphere means opposite things in the four combinations
+   of Show and polarity, and the colormap alone is too weak a cue. Spell it out. */
+function setReading() {
+  const el = document.getElementById('reading');
+  if (!el) return;
+  const dev = document.getElementById('showmode').value === 'deviation';
+  const spared = polarity === 'spared';
+  const txt = dev
+    ? (spared ? 'colour = how much LESS damage than the cohort average (healthier here)'
+              : 'colour = how much MORE damage than the cohort average')
+    : (spared ? 'colour = predicted INTACT tissue' : 'colour = predicted LESION');
+  el.textContent = txt;
+  el.className = spared ? 'good' : 'bad';   // spared reads as healthy in both modes
+}
 
 function updateErrorTotals() {
   // Both error groups are PROPORTIONS, so they should sum to ≤ 1.0 (correct + self-correct etc fill the rest)
@@ -565,7 +586,7 @@ function buildControls() {
     t.value = document.getElementById('showmode').value === 'deviation' ? '0.02' : '0.10';
     document.getElementById('thresh-val').textContent =
       (parseFloat(t.value) * 100).toFixed(0) + '%';
-    updateLesion();
+    updateLesion(true);
   });
   document.getElementById('scalemode').addEventListener('change', updateLesion);
   document.getElementById('rangemode').addEventListener('change', applyRangeMode);
@@ -800,7 +821,7 @@ function predictWithLens(M) {
   return out;
 }
 
-function updateLesion(noAutoSwitch) {
+function updateLesion(autoSwitch) {
   if (!nv) return;
   const mode = document.getElementById('viewmode').value;
   const cmap = document.getElementById('colormap').value;
@@ -867,6 +888,7 @@ function updateLesion(noAutoSwitch) {
     const norm = absolute ? raw : (raw - minPos) / range;
     vals[ri.roi] = Math.pow(Math.max(0, Math.min(1, norm)), gamma);
   }
+  setReading();
   nv.setColormap(cmap);
   nv.setValues(vals, 'predicted lesion');
 
@@ -890,8 +912,11 @@ function updateLesion(noAutoSwitch) {
         : (other === 'damaged' ? v : 1 - v);
       if (Math.min(1, Math.max(0, raw)) >= cut) otherHas++;
     }
-    // Only move on our own initiative. An explicit tab click is respected.
-    if (otherHas > 0 && !noAutoSwitch) { setPolarity(other); return; }
+    /* Only ever on a deliberate switch of the Show control. Doing it while a
+       slider moves silently inverts what the colour means -- max every subscore
+       and Damaged empties, so the map would flip to "below average" and paint
+       the hemisphere for a patient with no predicted lesion at all. */
+    if (otherHas > 0 && autoSwitch) { setPolarity(other); autoSwitched = true; return; }
   }
 
   const empty = document.getElementById('empty-note');
@@ -905,6 +930,12 @@ function updateLesion(noAutoSwitch) {
             ? `This profile departs from the cohort average by less than ${pct}% everywhere — an average patient on this lens. Move a slider, or lower "Hide below".`
             : `No region is predicted above ${pct}% — on this lens the profile implies little or no lesion. Lower "Hide below" to see what is there.`);
       empty.style.display = 'block';
+    } else if (autoSwitched) {
+      empty.textContent = polarity === 'spared'
+        ? 'Moved to Spared: this profile is below the cohort average everywhere, so there was nothing on Damaged. Colour here means healthier than average, not lesion.'
+        : 'Moved to Damaged: there was nothing on Spared for this profile.';
+      empty.style.display = 'block';
+      autoSwitched = false;
     } else {
       empty.style.display = 'none';
     }
